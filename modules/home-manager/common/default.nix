@@ -8,8 +8,8 @@
 }:
 {
   imports = [
-    ../programs/direnv
     ../filesystem
+    ../programs/direnv
     ../programs/gh
     ../programs/git
     ../programs/starship
