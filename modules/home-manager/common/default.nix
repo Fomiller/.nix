@@ -36,57 +36,81 @@
   };
 
   home.packages =
-    [
-      pkgs.ansible
-      pkgs.argocd
-      pkgs.aws-iam-authenticator
-      pkgs.awscli
-      pkgs.bottom
-      pkgs.btop
-      pkgs.coreutils
-      pkgs.deno
-      pkgs.direnv
-      pkgs.docker
-      pkgs.eksctl
-      pkgs.fh
-      pkgs.fx
-      pkgs.git-lfs
-      pkgs.glow
-      pkgs.gnupg
-      pkgs.gnutar
-      pkgs.gnutls
-      pkgs.go
-      pkgs.htop
-      pkgs.jq
-      pkgs.just
-      pkgs.k9s
-      pkgs.kubectl
-      pkgs.kubectx
-      pkgs.kubernetes-helm
-      pkgs.kustomize
-      pkgs.lazydocker
-      pkgs.neofetch
-      pkgs.neovim
-      pkgs.nixfmt-rfc-style
-      pkgs.pipenv
-      pkgs.python3
-      pkgs.python312Packages.pip
-      pkgs.redis
-      pkgs.ripgrep
-      pkgs.rustup
-      pkgs.saml2aws
-      pkgs.sops
-      pkgs.stow
-      pkgs.tfswitch
-      pkgs.tgswitch
-      pkgs.tree
-      pkgs.wget
-      pkgs.yq
-      pkgs.zig
-      pkgs.zoxide
-    ]
-    ++ lib.optionals pkgs.stdenv.isDarwin [
-      pkgs.docker
-      pkgs.raycast
-    ];
+    let
+      packageGroups = {
+        core = with pkgs; [
+          neovim
+          zoxide
+        ];
+
+        languages = with pkgs; [
+          go
+          deno
+          pipenv
+          python3
+          python312Packages.pip
+          rustup
+          zig
+        ];
+
+        devTools = with pkgs; [
+          awscli
+          ansible
+          bottom
+          btop
+          coreutils
+          direnv
+          htop
+          jq
+          just
+          lazydocker
+          neofetch
+          tfswitch
+          tgswitch
+          saml2aws
+          redis
+          ripgrep
+          sops
+          yq
+        ];
+
+        flock = with pkgs; [ aws-iam-authenticator ];
+
+        k8s = with pkgs; [
+          argocd
+          eksctl
+          k9s
+          kubectl
+          kubectx
+          kubernetes-helm
+          kustomize
+        ];
+
+        extras = with pkgs; [
+          fh
+          fx
+          git-lfs
+          glow
+          gnupg
+          gnutar
+          gnutls
+          nixfmt-rfc-style
+          stow
+          tree
+          wget
+        ];
+
+        mac = with pkgs; [
+          docker
+          raycast
+        ];
+      };
+    in
+    packageGroups.core
+    ++ packageGroups.languages
+    ++ packageGroups.devTools
+    ++ packageGroups.flock
+    ++ packageGroups.k8s
+    ++ packageGroups.extras
+    ++ lib.optionals pkgs.stdenv.isDarwin packageGroups.mac;
 }

@@ -1,4 +1,10 @@
-{ self, pkgs, outputs, ... }:
+{
+  self,
+  inputs,
+  pkgs,
+  outputs,
+  ...
+}:
 {
   # The platform the configuration will be used on.
   nix = {

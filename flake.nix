@@ -21,6 +21,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    _1password-shell-plugins.url = "github:1Password/shell-plugins";
+
     # nix-homebrew.url = "github:zhaofengli/nix-homebrew";
     #
     # homebrew-core = {
