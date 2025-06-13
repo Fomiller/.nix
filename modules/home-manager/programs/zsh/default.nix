@@ -19,6 +19,7 @@
       la = "ls -a";
       # kubernetes
       k = "kubectl";
+      kx = "kubectx";
       # programs
       top = "ytop";
     };
