@@ -1,4 +1,4 @@
-{...}:
+{ ... }:
 {
   programs.tmux = {
     enable = true;
@@ -13,8 +13,8 @@
       # Use | and - to split a window vertically and horizontally instead of " and % respoectively
       unbind '"'
       unbind %
-      bind v split-window -h -c "#{pane_current_path}"
-      bind s split-window -v -c "#{pane_current_path}"
+      # bind v split-window -h -c "#{pane_current_path}"
+      # bind s split-window -v -c "#{pane_current_path}"
 
       # Reload tmux config by pressing prefix + R
       bind R source-file ~/.config/tmux/tmux.conf \; display "TMUX Conf Reloaded"
