@@ -38,7 +38,18 @@
     configurationRevision = self.rev or self.dirtyRev or null;
 
     # Set dock to autohide
-    defaults.dock.autohide = true;
+    # https://mynixos.com/options/system.defaults
+    defaults = {
+      dock = {
+        autohide = true;
+        tilesize = 40; # icon size in dock
+        magnification = true;
+        orientation = "left";
+      };
+      finder = {
+        AppleShowAllFiles = true;
+      };
+    };
 
     # Used for backwards compatibility, please read the changelog before changing.
     # $ darwin-rebuild changelog
