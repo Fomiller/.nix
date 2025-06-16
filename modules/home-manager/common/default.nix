@@ -58,7 +58,7 @@
           ];
 
           devTools = with pkgs; [
-            awscli
+            awscli2
             ansible
             bottom
             btop

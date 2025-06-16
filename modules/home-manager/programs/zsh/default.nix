@@ -7,6 +7,7 @@
       vim = "nvim";
       vi = "nvim";
       s2a = "saml2aws";
+      s2al = "saml2aws login";
       # git
       ga = "git add";
       gp = "git pull";
