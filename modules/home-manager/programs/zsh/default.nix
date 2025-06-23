@@ -21,6 +21,7 @@
       # kubernetes
       k = "kubectl";
       kx = "kubectx";
+      ktx = "kubectx";
       # programs
       top = "ytop";
     };

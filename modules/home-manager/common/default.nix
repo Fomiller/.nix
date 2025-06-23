@@ -16,6 +16,7 @@
     ../programs/tmux
     ../programs/zoxide
     ../programs/zsh
+    ../programs/rbenv
   ];
 
   # Nixpkgs configuration
