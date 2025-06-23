@@ -65,6 +65,7 @@
             btop
             coreutils
             direnv
+            fzf
             htop
             jq
             just

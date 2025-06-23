@@ -15,6 +15,8 @@
       gc = "git commit";
       gl = "git log";
       gd = "git diff";
+      gb = "git checkout $(git branch | grep -v '^\*' | fzf --height=20% --reverse --info=inline)";
+      branch = "git checkout $(git branch | grep -v '^\*' | fzf --height=20% --reverse --info=inline)";
       # filesystem
       ll = "ls -la";
       la = "ls -a";
