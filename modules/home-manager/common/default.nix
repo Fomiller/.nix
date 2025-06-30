@@ -17,6 +17,7 @@
     ../programs/zoxide
     ../programs/zsh
     ../programs/rbenv
+    ../programs/k9s
   ];
 
   # Nixpkgs configuration
@@ -59,24 +60,25 @@
           ];
 
           devTools = with pkgs; [
-            awscli2
             ansible
+            awscli2
             bottom
             btop
             coreutils
             direnv
+            doppler
             fzf
             htop
             jq
             just
             lazydocker
             neofetch
-            tfswitch
-            tgswitch
-            saml2aws
             redis
             ripgrep
+            saml2aws
             sops
+            tfswitch
+            tgswitch
             yq
           ];
 
@@ -88,7 +90,6 @@
           k8s = with pkgs; [
             argocd
             eksctl
-            k9s
             kubectl
             kubectx
             kubernetes-helm
