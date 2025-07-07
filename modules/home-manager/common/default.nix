@@ -80,6 +80,7 @@
             tfswitch
             tgswitch
             yq
+            kubebuilder
           ];
 
           flock = with pkgs; [
