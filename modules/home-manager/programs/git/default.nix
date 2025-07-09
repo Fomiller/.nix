@@ -6,14 +6,6 @@
     userName = "Forrest Miller";
     userEmail = "forrestmillerj@gmail.com";
 
-    # aliases = {
-    #   ga = "add";
-    #   gs = "status";
-    #   gc = "commit";
-    #   gl = "log";
-    #   gd = "diff";
-    # };
-
     extraConfig = {
       core.editor = "nvim";
       core.autocrlf = "input";

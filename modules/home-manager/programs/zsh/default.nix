@@ -13,6 +13,8 @@
       gp = "git pull";
       gs = "git status";
       gc = "git commit";
+      gco = "git checkout";
+      gco- = "git checkout -";
       gl = "git log";
       gd = "git diff";
       gb = "git checkout $(git branch | grep -v '^\*' | fzf --height=20% --reverse --info=inline)";
