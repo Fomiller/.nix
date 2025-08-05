@@ -12,12 +12,12 @@
     ../programs/direnv
     ../programs/gh
     ../programs/git
+    ../programs/k9s
+    ../programs/rbenv
     ../programs/starship
     ../programs/tmux
     ../programs/zoxide
     ../programs/zsh
-    ../programs/rbenv
-    ../programs/k9s
   ];
 
   # Nixpkgs configuration
@@ -39,6 +39,7 @@
     sessionPath = [
       "$HOME/bin"
       "$HOME/.local/bin"
+      "$HOME/go/bin"
     ];
 
     packages =
@@ -60,6 +61,7 @@
           ];
 
           devTools = with pkgs; [
+            act
             ansible
             awscli2
             bottom
@@ -80,7 +82,7 @@
             tfswitch
             tgswitch
             yq
-            kubebuilder
+            dyff
           ];
 
           flock = with pkgs; [
@@ -91,6 +93,7 @@
           k8s = with pkgs; [
             argocd
             eksctl
+            kubebuilder
             kubectl
             kubectx
             kubernetes-helm

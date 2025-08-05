@@ -16,6 +16,11 @@
       # bind v split-window -h -c "#{pane_current_path}"
       # bind s split-window -v -c "#{pane_current_path}"
 
+      # New windows inherit the current pane's path
+      bind c new-window -c "#{pane_current_path}"
+      bind '"' split-window -v -c "#{pane_current_path}"
+      bind % split-window -h -c "#{pane_current_path}"
+
       # Reload tmux config by pressing prefix + R
       bind R source-file ~/.config/tmux/tmux.conf \; display "TMUX Conf Reloaded"
 
