@@ -240,6 +240,8 @@ nix flake update
 - **`zsh`:** Zsh shell with extensive aliases (git, kubectl), completions, and custom keybindings.
 
 ## Trouble shooting
+[system cant find nix](https://github.com/DeterminateSystems/nix-installer/blob/main/docs/troubleshooting.md#your-system-cant-find-nix)
+or try this
 if nix is not activated on reboot
 ```
 cd ~/dev/personal/.nix
