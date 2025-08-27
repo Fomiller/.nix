@@ -239,6 +239,16 @@ nix flake update
 - **`xdg`:** Manages XDG user directories and default MIME type associations for applications like Totem, Loupe, and TextEditor.
 - **`zsh`:** Zsh shell with extensive aliases (git, kubectl), completions, and custom keybindings.
 
+## Trouble shooting
+if nix is not activated on reboot
+```
+cd ~/dev/personal/.nix
+/nix/var/nix/profiles/default/bin/nix build .#darwinConfigurations.flock.system
+sudo ./result/sw/bin/darwin-rebuild switch --flake .#flock
+zsh
+just switch flock
+```
+
 ## Contributing
 
 Contributions are welcome! If you have improvements or suggestions, please open an issue or submit a pull request.
