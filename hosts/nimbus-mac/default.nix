@@ -28,6 +28,15 @@
 
   };
 
+  # nix-darwin's manual-build code passes a --toc-depth flag that upstream
+  # nixos-render-docs (pulled in by our tracked nixpkgs-unstable) has
+  # removed, and nix-darwin's master hasn't caught up yet. This breaks both
+  # our own system manual build and darwin-uninstaller's separate internal
+  # system config (which builds its own manual regardless of our
+  # documentation settings) — disable both until upstream fixes it.
+  documentation.doc.enable = false;
+  system.tools.darwin-uninstaller.enable = false;
+
   # darwin system configuration
   system = {
     # Set primary user

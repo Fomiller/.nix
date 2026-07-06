@@ -35,6 +35,11 @@
     };
   };
 
+  # Determinate Nix doesn't ship a nix.conf with nix-command/flakes enabled
+  # by default (nix.enable = false means nix-darwin won't manage it either),
+  # so plain `nix` invocations fail without this.
+  xdg.configFile."nix/nix.conf".text = "experimental-features = nix-command flakes\n";
+
   home = {
     username = "${userConfig.username}";
     homeDirectory =
@@ -90,7 +95,11 @@
             fzf
             go-migrate-pg
             google-cloud-sdk
-            grafana
+            # grafana from nixpkgs-unstable currently fails to build on
+            # aarch64-darwin (yarn/sandbox EBADF error building web assets,
+            # no binary cache available for our pinned revision) — use the
+            # stable channel's prebuilt version instead.
+            stable.grafana
             grafana-alloy
             htop
             jq
