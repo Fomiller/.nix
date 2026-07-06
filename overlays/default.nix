@@ -10,4 +10,9 @@
       config.allowUnfree = true;
     };
   };
+
+  # Local packages defined in ../packages, exposed on the top-level pkgs set.
+  custom-packages = final: _prev: {
+    rtk = final.callPackage ../packages/rtk.nix { };
+  };
 }

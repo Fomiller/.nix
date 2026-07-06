@@ -3,10 +3,10 @@
   programs.git = {
     enable = true;
 
-    userName = "Forrest Miller";
-    userEmail = "forrestmillerj@gmail.com";
+    settings = {
+      user.name = "Forrest Miller";
+      user.email = "forrestmillerj@gmail.com";
 
-    extraConfig = {
       core.editor = "nvim";
       core.autocrlf = "input";
 
@@ -16,6 +16,16 @@
       push.autoSetupRemote = "true";
 
       color.ui = "auto";
+
+      # aliases
+      alias.st = "status";
+      alias.cm = "commit";
+      alias.co = "checkout";
+      alias.co- = "checkout -";
+      alias.a = "add";
+
+      diff.sopsdiffer.textconv = "AWS_PROFILE=aerodome sops -d --config /dev/null";
+      diff.sops-govcloud.textconv = "AWS_PROFILE=govcloud sops -d --config /dev/null";
     };
 
     #   delta = {

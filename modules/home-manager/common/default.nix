@@ -24,6 +24,7 @@
   nixpkgs = {
     overlays = [
       outputs.overlays.stable-packages
+      outputs.overlays.custom-packages
     ];
 
     config = {
@@ -44,6 +45,10 @@
 
     packages =
       let
+        go-migrate-pg = pkgs.go-migrate.overrideAttrs (oldAttrs: {
+          tags = [ "postgres" ];
+        });
+
         packageGroups = {
           core = with pkgs; [
             neovim
@@ -60,29 +65,41 @@
             zig
           ];
 
+          aiTools = with pkgs; [
+            claude-code
+            rtk
+            github-mcp-server
+          ];
+
           devTools = with pkgs; [
             act
+            json2ts
+            eslint
             ansible
             awscli2
             bottom
             btop
+            chamber
             coreutils
             direnv
             doppler
+            dyff
             fzf
+            go-migrate-pg
             htop
             jq
             just
             lazydocker
-            neofetch
+            fastfetch
+            postgresql_17_jit
             redis
             ripgrep
             saml2aws
             sops
             tfswitch
             tgswitch
-            yq
-            dyff
+            yq-go
+            lua51Packages.tree-sitter-cli
           ];
 
           flock = with pkgs; [
@@ -92,12 +109,21 @@
 
           k8s = with pkgs; [
             argocd
+            kargo
             eksctl
+            helm-dashboard
             kubebuilder
             kubectl
             kubectx
             kubernetes-helm
+            kubernetes-helmPlugins.helm-diff
+            kubernetes-helmPlugins.helm-dt
+            kubernetes-helmPlugins.helm-git
+            kubernetes-helmPlugins.helm-s3
+            kubernetes-helmPlugins.helm-secrets
+            kubernetes-helmPlugins.helm-unittest
             kustomize
+            vendir
           ];
 
           extras = with pkgs; [
@@ -109,6 +135,7 @@
             gnutar
             gnutls
             nixfmt-rfc-style
+            sesh
             stow
             tree
             wget
@@ -121,11 +148,12 @@
         };
       in
       packageGroups.core
-      ++ packageGroups.languages
+      ++ packageGroups.aiTools
       ++ packageGroups.devTools
+      ++ packageGroups.extras
       ++ packageGroups.flock
       ++ packageGroups.k8s
-      ++ packageGroups.extras
+      ++ packageGroups.languages
       ++ lib.optionals pkgs.stdenv.isDarwin packageGroups.mac;
   };
 }
