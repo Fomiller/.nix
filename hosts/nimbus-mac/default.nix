@@ -31,7 +31,7 @@
   # darwin system configuration
   system = {
     # Set primary user
-    primaryUser = "forrest.miller";
+    primaryUser = "forrest";
 
     # Set Git commit hash for darwin-version.
     configurationRevision = self.rev or self.dirtyRev or null;
@@ -51,6 +51,19 @@
   environment = {
     systemPackages = [
       pkgs.vim
+    ];
+  };
+
+  fonts.packages = [
+    pkgs.nerd-fonts.hack
+  ];
+
+  homebrew = {
+    enable = true;
+    taps = [ "redis-stack/redis-stack" ];
+    casks = [
+      "kegworks"
+      "redis-stack-server"
     ];
   };
 

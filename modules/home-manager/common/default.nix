@@ -9,10 +9,13 @@
 {
   imports = [
     ../filesystem
+    ../programs/bat
     ../programs/direnv
+    ../programs/fzf
     ../programs/gh
     ../programs/git
     ../programs/k9s
+    ../programs/lazygit
     ../programs/rbenv
     ../programs/starship
     ../programs/tmux
@@ -86,11 +89,15 @@
             dyff
             fzf
             go-migrate-pg
+            google-cloud-sdk
+            grafana
+            grafana-alloy
             htop
             jq
             just
             lazydocker
             fastfetch
+            minikube
             postgresql_17_jit
             redis
             ripgrep
@@ -98,6 +105,8 @@
             sops
             tfswitch
             tgswitch
+            twitch-cli
+            watch
             yq-go
             lua51Packages.tree-sitter-cli
           ];

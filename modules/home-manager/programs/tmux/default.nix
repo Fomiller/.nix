@@ -7,6 +7,7 @@
     baseIndex = 1;
     historyLimit = 10000;
     terminal = "tmux-256color";
+    tmuxinator.enable = true;
     extraConfig = ''
       set -g prefix C-a
       setw -g mode-keys vi

@@ -27,10 +27,20 @@
       # filesystem
       ll = "ls -la";
       la = "ls -a";
+      lt = "ls --tree";
+      # config editing
+      zshconfig = "vim ~/.zshrc";
+      vimconfig = "vim ~/.config/nvim/init.lua";
+      muxconfig = "vim ~/.tmux.conf";
+      # tmux
+      mux = "tmuxinator";
+      # git
+      lg = "lazygit";
       # kubernetes
       k = "kubectl";
       kx = "kubectx";
       ktx = "kubectx";
+      k9 = "k9s";
       # programs
       top = "ytop";
     };
@@ -39,6 +49,22 @@
       export GOBIN="$HOME/go/bin"
       export EDITOR="nvim"
       export PATH="$HOME/.opencode/bin:$PATH"
+      export TERRAGRUNT_FORWARD_TF_STDOUT=1
+      export AWS_ASSUME_CONFIG_DIR="$HOME"
+
+      alias mega='docker run -it --rm \
+          --name megatainer-''${PWD##*/} \
+          --env-file <(doppler secrets download --no-file --format docker) \
+          -w /home/workspace/ \
+          -v $HOME/.ssh:$HOME \
+          -v $PWD/:/home/workspace/:rw,z fomiller/megatainer:latest'
+
+      alias mega-local='docker run -it --rm \
+          --name megatainer-''${PWD##*/} \
+          --env-file <(doppler secrets download --no-file --format docker) \
+          -w /home/workspace/ \
+          -v $HOME/.ssh:$HOME \
+          -v $PWD/:/home/workspace/:rw,z fomiller/megatainer:local'
 
       function sesh-sessions() {
         {
