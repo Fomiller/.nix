@@ -6,7 +6,8 @@ python3Packages.buildPythonApplication rec {
   pyproject = true;
 
   src = python3Packages.fetchPypi {
-    inherit pname version;
+    pname = "context_stats";
+    inherit version;
     hash = "sha256-xovcaNrSP44SxZ7WHymHnDgFeORckTj0FFxhcsILq7Y=";
   };
 
