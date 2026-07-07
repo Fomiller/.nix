@@ -20,6 +20,15 @@
       terraform = {
         symbol = " ";
       };
+      # Starship has no built-in flox module (only nix_shell/direnv), so this
+      # reads the env var flox activate itself exports to list active
+      # environments.
+      env_var.flox = {
+        variable = "FLOX_PROMPT_ENVIRONMENTS";
+        format = "[flox:$env_value]($style) ";
+        style = "bold blue";
+        disabled = false;
+      };
       kubernetes = {
         disabled = false;
         style = "bold pink";
