@@ -75,6 +75,7 @@
 
           aiTools = with pkgs; [
             claude-code
+            context-stats
             rtk
             github-mcp-server
           ];
