@@ -21,6 +21,16 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Not pinned to our nixpkgs so it keeps hitting Flox's own binary cache
+    # (cache.flox.dev). The "latest" branch specifically (not the default
+    # branch) is what the cache actually has prebuilt artifacts for.
+    flox.url = "github:flox/flox/latest";
+
+    # Determinate Systems' own nix-darwin module for managing Determinate
+    # Nix declaratively (customSettings -> /etc/nix/nix.custom.conf),
+    # replacing our own hand-rolled nix.enable = false + environment.etc.
+    determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/3";
+
     # _1password-shell-plugins.url = "github:1Password/shell-plugins";
 
     # nix-homebrew.url = "github:zhaofengli/nix-homebrew";
@@ -83,6 +93,7 @@
           modules = [
             ./hosts/${hostname} # this is configuration
             home-manager.darwinModules.home-manager
+            inputs.determinate.darwinModules.default
           ];
         };
 

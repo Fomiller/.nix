@@ -6,14 +6,27 @@
   ...
 }:
 {
-  # The platform the configuration will be used on.
-  nix = {
-    # Necessary for using flakes on this system.
-    settings.experimental-features = "nix-command flakes";
-
-    # Necessary for using nix determinate
-    enable = false;
-
+  # Determinate Systems' own nix-darwin module manages Determinate Nix
+  # directly (this forces nix.enable = false internally, and customSettings
+  # is written to /etc/nix/nix.custom.conf, which Determinate's own
+  # /etc/nix/nix.conf `!include`s).
+  determinateNix = {
+    enable = true;
+    customSettings = {
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      # Plain (not "trusted-") substituters are baked into the daemon's own
+      # authoritative config, so they're used unconditionally for every
+      # build — unlike trusted-substituters, which only pre-approves what an
+      # already-trusted user may additionally request, and this machine's
+      # only trusted-user is root.
+      extra-substituters = [ "https://cache.flox.dev" ];
+      extra-trusted-public-keys = [
+        "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+      ];
+    };
   };
 
   nixpkgs = {

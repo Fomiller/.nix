@@ -11,6 +11,7 @@
     ../filesystem
     ../programs/bat
     ../programs/direnv
+    ../programs/flox
     ../programs/fzf
     ../programs/gh
     ../programs/git

@@ -18,8 +18,8 @@ some generic wording in README.md — both configured hosts are Macs.
   package list (grouped into `packageGroups.*`), program module imports,
   `xdg.configFile` entries.
 - `modules/home-manager/programs/<name>/default.nix` — one file per enabled
-  `programs.*` module (bat, fzf, gh, git, k9s, lazygit, rbenv, starship, tmux,
-  zoxide, zsh). Add new ones here and import from `common/default.nix`.
+  `programs.*` module (bat, flox, fzf, gh, git, k9s, lazygit, rbenv, starship,
+  tmux, zoxide, zsh). Add new ones here and import from `common/default.nix`.
 - `modules/home-manager/filesystem/default.nix` — activation scripts: creates
   `~/dev/{personal,work,third_party}`, and clone-once (not auto-pull)
   `~/.config/nvim` from `Fomiller/nvim.git`.
@@ -67,10 +67,30 @@ password in.
 
 ## Known gotchas (already solved once, don't re-diagnose from scratch)
 
-- **`nix.enable = false;`** in both host configs is intentional — it tells
-  nix-darwin not to manage `/etc/nix/nix.conf`, so Determinate Nix's own
-  daemon/config management doesn't get fought over. Don't "fix" this by
-  flipping it to `true`.
+- **Determinate Nix is managed via the `determinateNix` module** (flake input
+  `determinate`, imported as `inputs.determinate.darwinModules.default`), not
+  a manual `nix.enable = false;`. Both hosts set `determinateNix.enable =
+  true;` plus `determinateNix.customSettings`, which the module renders to
+  `/etc/nix/nix.custom.conf` (Determinate's own `/etc/nix/nix.conf` `!include`s
+  this file). The module forces `nix.enable = false` internally — don't add
+  that line back manually, it's redundant and no longer where Nix config
+  actually lives.
+- **A trusted-substituter cache (e.g. Flox's `cache.flox.dev`) silently not
+  used, even after adding it and confirming the daemon "trusts" it**: this
+  machine's `trusted-users` is `root` only — your own login is *not* a
+  trusted user. `trusted-substituters`/`trusted-public-keys` only pre-approve
+  what an *already-trusted* client may additionally request; an untrusted
+  client requesting a substituter that's merely in `trusted-substituters`
+  gets it silently rejected (`ignoring untrusted substituter '...', you are
+  not a trusted user`) and the build falls through to compiling from source
+  (can OOM on something like a from-source Perl build). The fix is
+  `extra-substituters` (no `trusted-` prefix) in
+  `determinateNix.customSettings` — that's baked into the daemon's own
+  authoritative config and used unconditionally for every build, with no
+  per-client trust check. Keep the key itself as `extra-trusted-public-keys`
+  (no non-trusted equivalent exists for that option). Verify with
+  `nix show-config | grep substituters` — the cache must appear in the plain
+  `substituters =` line, not only in `trusted-substituters =`.
 - **nix-command/flakes disabled errors**: this machine's `/etc/nix/nix.conf`
   was once silently orphaned by a prior nix-darwin activation (renamed to
   `nix.conf.before-nix-darwin` and never replaced, since `nix.enable = false`
@@ -81,7 +101,15 @@ password in.
   `sudo cp /etc/nix/nix.conf.before-nix-darwin /etc/nix/nix.conf`. This repo
   also carries redundant belt-and-suspenders coverage: a home-manager-managed
   `~/.config/nix/nix.conf` (in `common/default.nix`) and a hardcoded
-  `--extra-experimental-features` flag in the justfile's `flake-update`.
+  `--extra-experimental-features` flag in the justfile's `flake-update`. The
+  same collision happens with `/etc/nix/nix.custom.conf` — the Determinate
+  installer creates it once, before nix-darwin ever runs, so nix-darwin
+  refuses to overwrite it on a machine's first-ever `rebuild` (`error:
+  Unexpected files in /etc, aborting activation`). The `rebuild` recipe in
+  the `justfile` already auto-renames it to `nix.custom.conf.before-nix-darwin`
+  the first time (idempotent — only fires when the path isn't already
+  nix-darwin's own symlink), so this shouldn't need manual intervention on a
+  fresh machine; if it still errors, that auto-rename logic broke.
 - **Files that block `home-manager switch` with "would be clobbered"**: this
   user's dotfiles (`.zshrc`, `.zshenv`, `.zprofile`, `starship.toml`, etc.)
   used to be GNU Stow symlinks into `~/.dotfiles`. A stow symlink at a path
