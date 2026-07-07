@@ -81,7 +81,13 @@
       zle     -N             sesh-sessions
       bindkey -M emacs '\es' sesh-sessions
       bindkey -M vicmd '\es' sesh-sessions
-      bindkey -M viins '\es' sesh-sessions      
+      bindkey -M viins '\es' sesh-sessions
+
+      # Move fzf's cd widget off Alt-C (\ec) onto Ctrl-G instead.
+      bindkey -r '\ec'
+      bindkey -M emacs '^G' fzf-cd-widget
+      bindkey -M vicmd '^G' fzf-cd-widget
+      bindkey -M viins '^G' fzf-cd-widget
     '';
   };
 }
