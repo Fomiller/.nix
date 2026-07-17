@@ -58,6 +58,16 @@
           tags = [ "postgres" ];
         });
 
+        # nixpkgs' minikube derivation symlinks bin/kubectl -> bin/minikube
+        # (a "minikube kubectl" convenience shim), which collides with the
+        # standalone kubectl package below. Drop the symlink so both can
+        # coexist in the same profile.
+        minikube-no-kubectl = pkgs.minikube.overrideAttrs (oldAttrs: {
+          postInstall = (oldAttrs.postInstall or "") + ''
+            rm -f $out/bin/kubectl
+          '';
+        });
+
         packageGroups = {
           core = with pkgs; [
             neovim
@@ -108,7 +118,7 @@
             just
             lazydocker
             fastfetch
-            minikube
+            minikube-no-kubectl
             postgresql_17_jit
             redis
             ripgrep
@@ -132,6 +142,7 @@
             kargo
             eksctl
             helm-dashboard
+            holmesgpt
             kubebuilder
             kubectl
             kubectx

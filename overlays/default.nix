@@ -15,5 +15,6 @@
   custom-packages = final: _prev: {
     rtk = final.callPackage ../packages/rust/rtk.nix { };
     context-stats = final.callPackage ../packages/python/context-stats.nix { };
+    holmesgpt = final.callPackage ../packages/python/holmesgpt.nix { };
   };
 }

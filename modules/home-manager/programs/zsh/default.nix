@@ -52,6 +52,10 @@
       export TERRAGRUNT_FORWARD_TF_STDOUT=1
       export AWS_ASSUME_CONFIG_DIR="$HOME"
 
+      # Secrets/API keys (e.g. ANTHROPIC_API_KEY) live outside this git repo.
+      # Create this file by hand; it's never read or written by nix.
+      [ -f "$HOME/.config/zsh/secrets.zsh" ] && source "$HOME/.config/zsh/secrets.zsh"
+
       alias mega='docker run -it --rm \
           --name megatainer-''${PWD##*/} \
           --env-file <(doppler secrets download --no-file --format docker) \
@@ -65,6 +69,12 @@
           -w /home/workspace/ \
           -v $HOME/.ssh:$HOME \
           -v $PWD/:/home/workspace/:rw,z fomiller/megatainer:local'
+
+      # Scope Bedrock auth + default model to holmes only, rather than
+      # exporting AWS_PROFILE globally (would affect unrelated aws-cli use).
+      holmes() {
+        AWS_PROFILE=feury-devops-engineers MODEL=sonnet-5 command holmes "$@"
+      }
 
       function sesh-sessions() {
         {
