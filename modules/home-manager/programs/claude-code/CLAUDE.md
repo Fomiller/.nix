@@ -9,13 +9,23 @@ read as AI-generated — the goal is to sound plain and direct.
 - No emoji. No "This PR..." throat-clearing. Get to the point.
 - Short sentences. Prefer plain words over impressive ones.
 - Only explain what a reviewer actually needs; don't pad.
+- One idea per sentence. Don't chain clauses with em-dashes or stack
+  parentheticals — if a sentence needs re-reading to parse, split it.
+- Aim for a low reading level, but stay engineer-tailored: keep the precise
+  terms a reviewer needs (e.g. glob, marker, reconcile, drift check). Simplify
+  the wording, not the concepts.
+- Prefer bullets over dense prose for any list — above/below splits, steps,
+  verification results.
 
 ### PR description structure
 
-Use these sections, kept short and skimmable:
+Lead with one high-level sentence, then the sections below. Keep it all short
+and skimmable:
 
 ```
-## Description
+<one plain sentence summarizing the whole change, before the Summary heading>
+
+## Summary
 <what changed, 1–3 sentences or a tight bullet list>
 
 ## Why
@@ -26,7 +36,7 @@ Use these sections, kept short and skimmable:
 migration steps. Omit this section entirely if not needed.>
 ```
 
-- If a Jira ticket is supplied, link it (e.g. `[DO-1234](<url>)`) at the top or in Description.
+- If a Jira ticket is supplied, link it (e.g. `[DO-1234](<url>)`) at the top or in Summary.
 - Don't invent a Note section just to fill space — leave it out when there's nothing to say.
 
 ### Code comments
