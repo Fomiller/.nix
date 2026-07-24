@@ -10,6 +10,7 @@
   imports = [
     ../filesystem
     ../programs/bat
+    ../programs/claude-code
     ../programs/direnv
     ../programs/flox
     ../programs/fzf
