@@ -13,6 +13,8 @@ in
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
     ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";
     ".claude/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/keybindings.json";
-    ".claude/statusline.conf".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/statusline.conf";
+    # statusline.conf is intentionally not managed here: claude-statusline
+    # (context-stats) regenerates it at runtime, so a managed symlink just gets
+    # clobbered into a plain file and then blocks the next switch.
   };
 }
