@@ -149,6 +149,46 @@ password in.
   on whatever machine already has a checkout. Don't change this to
   auto-`pull` without asking; if nvim needs a refresh, do it as an explicit
   one-off `git pull` in that directory.
+- **home-manager's experimental `services-modular` breaking on a fresh
+  `nixpkgs-unstable` bump** (`home-manager switch` fails deep in nixpkgs, e.g.
+  `function 'anonymous lambda' called with unexpected argument 'lib'` at
+  `nixos/modules/system/service/systemd/service.nix`): home-manager's
+  `modules/services-modular/service.nix` imports that nixos module file
+  directly as a bare path (`imports = [ (nixpkgsPath + "/nixos/modules/...
+  /service.nix") ]`), which only works if that file is a single-stage module
+  (`{ lib, config, systemdPackage, ... }: ...`). A sufficiently new nixpkgs
+  commit can refactor it into a curried two-stage function (`{ pkgs }: { lib,
+  config, ... }: ...`) for its own "self-contained, mixable across nixpkgs
+  versions" reasons — home-manager's bare-path import breaks against that
+  shape. This is upstream skew between two independently-versioned repos
+  (nixpkgs and home-manager), not a mistake in this repo's config, and
+  `nix flake update` won't fix it since it's what caused it. Confirm by
+  diffing the file at the old vs. new pinned `nixpkgs` rev; if home-manager's
+  own `master` hasn't adapted yet either, the fix is to temporarily pin
+  `nixpkgs.url` in `flake.nix` to the last known-good rev (with a comment
+  explaining why and how to un-pin) rather than waiting on `flake update`.
+- **`just switch`/`just rebuild` hangs indefinitely, seemingly doing nothing**
+  (e.g. stuck on a `post-build` step, or a build step just never returns):
+  check for a stuck `/nix/store/.../post-build-hook.sh` process (`ps aux |
+  grep post-build-hook`). Determinate Nix's post-build hook writes build
+  telemetry to the FIFO `/nix/var/determinate/intake.pipe`, and a `write()` to
+  a FIFO blocks forever if nothing has the read end open — which happens
+  whenever the `determinate-nixd` daemon isn't alive to consume it. That
+  daemon's LaunchDaemon plist
+  (`/Library/LaunchDaemons/systems.determinate.nix-daemon.plist`) has
+  `RunAtLoad = false` and no `KeepAlive` key, so nothing guarantees it comes
+  back after a reboot — it's only meant to be revived via on-demand socket
+  activation on `/var/run/nix-daemon.socket` /
+  `/var/run/determinate-nixd.socket`, and that hasn't reliably kept a
+  persistent FIFO-reading instance up across reboots in practice. Confirm via
+  `sudo launchctl print system/systems.determinate.nix-daemon` (look for
+  `state = running` / a recent `pid`) and by checking
+  `/var/log/determinate-nix-daemon.log` for a `Shutting down on Terminate`
+  entry with no further activity after it (a graceful shutdown, not a crash,
+  usually right at the last reboot per `sysctl kern.boottime`). Fix: `sudo
+  launchctl kickstart -k system/systems.determinate.nix-daemon` — this
+  immediately drains any backlog of stuck `post-build-hook.sh` writers once
+  a fresh instance is listening again.
 
 ## Git
 

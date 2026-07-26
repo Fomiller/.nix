@@ -1,3 +1,5 @@
+@RTK.md
+
 # User preferences
 
 ## Writing tone (PR descriptions & code comments)

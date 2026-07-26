@@ -2,7 +2,23 @@
   description = "Nix configs for my machines";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # TEMPORARILY PINNED past nixpkgs-unstable's usual rolling tracking.
+    # Rev 38affae6a5768f9b61f81355c7558ee971b2afb1 (and later, as of
+    # 2026-07-26) refactored nixos/modules/system/service/systemd/service.nix
+    # into a curried two-stage function (`{ pkgs }: { lib, config, ... }: ...`
+    # instead of a plain `{ lib, config, systemdPackage, ... }: ...` module).
+    # home-manager's modules/services-modular/service.nix imports that file
+    # directly as a bare path, which only works with the old single-stage
+    # shape - the module system's auto-import ends up calling the outer
+    # `{ pkgs }:` lambda with `lib` too, erroring with "function 'anonymous
+    # lambda' called with unexpected argument 'lib'" during
+    # `home-manager switch`. Confirmed home-manager's master (rev
+    # 079a3b5d1aa6a719920a51316253b7d6dd22738d at the time) hadn't adapted to
+    # this yet, so it's not something `nix flake update` alone will fix.
+    # Un-pin (revert to the nixpkgs-unstable branch tracking below) once
+    # home-manager's services-modular code catches up:
+    #   nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/7525d999cd850b9a488817abc89c75dc733acf17";
 
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.05";
 
