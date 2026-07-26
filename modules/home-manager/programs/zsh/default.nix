@@ -70,11 +70,9 @@
           -v $HOME/.ssh:$HOME \
           -v $PWD/:/home/workspace/:rw,z fomiller/megatainer:local'
 
-      # Scope Bedrock auth + default model to holmes only, rather than
-      # exporting AWS_PROFILE globally (would affect unrelated aws-cli use).
-      holmes() {
-        AWS_PROFILE=feury-devops-engineers MODEL=sonnet-5 command holmes "$@"
-      }
+      # The `holmes` CLI wrapper (default model/backend) is host-specific:
+      # nimbus uses a personal Anthropic API key, flock uses AWS Bedrock via
+      # a work SSO profile. See ./nimbus.nix and ./flock.nix.
 
       function sesh-sessions() {
         {

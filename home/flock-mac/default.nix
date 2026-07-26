@@ -11,6 +11,9 @@
     # statusline). Shared CLAUDE.md is handled by the claude-code module in
     # common; this is the flock-only extra.
     "${nhModules}/programs/claude-code/flock.nix"
+    # Work (AWS Bedrock) HolmesGPT wiring.
+    "${nhModules}/programs/k9s/flock.nix"
+    "${nhModules}/programs/zsh/flock.nix"
     # inputs._1password-shell-plugins.hmModules.default
   ];
 
