@@ -2,7 +2,7 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  "model": "claude-opus-4-8",
+  "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -24,7 +24,7 @@
     "caveman@caveman": true,
     "cloudflare@cloudflare": true,
     "gopls-lsp@claude-plugins-official": true,
-    "github@claude-plugins-official": true,
+    "github@claude-plugins-official": false,
     "terraform@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {

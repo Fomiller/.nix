@@ -55,6 +55,12 @@ in
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
     ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";
     ".claude/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/keybindings.json";
+    # Whole-directory symlink here, unlike ./skills which needs one symlink per
+    # entry: the module only writes into .claude/agents/ when `agents` or
+    # `agentsDir` is set (both unset above), so nothing else claims this path and
+    # there's no collision to dodge. Upside is new agent files take effect
+    # immediately without a switch.
+    ".claude/agents".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/agents";
     # statusline.conf is intentionally not managed here: claude-statusline
     # (context-stats) regenerates it at runtime, so a managed symlink just gets
     # clobbered into a plain file and then blocks the next switch.
