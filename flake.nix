@@ -82,6 +82,13 @@
           firstName = "forrest";
           lastName = "miller";
           username = "forrest";
+          # ArgoCD MCP server target. baseUrl = null skips registering it on
+          # this host. insecure sets NODE_TLS_REJECT_UNAUTHORIZED=0 for a
+          # self-signed endpoint. TODO: set nimbus's ArgoCD URL.
+          argocd = {
+            baseUrl = null;
+            insecure = false;
+          };
         };
         "forrest.miller" = {
           email = "forrest.millerj@flocksafety.com";
@@ -89,6 +96,10 @@
           firstName = "forrest";
           lastName = "miller";
           username = "forrest.miller";
+          argocd = {
+            baseUrl = "https://argocd.dingo-halfmoon.ts.net";
+            insecure = true;
+          };
         };
       };
 

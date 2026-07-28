@@ -1,4 +1,10 @@
-{ config, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  userConfig,
+  ...
+}:
 let
   # Absolute path to this module's directory in the live repo checkout, so the
   # symlinks below stay editable in place (and writable by Claude Code itself)
@@ -6,9 +12,45 @@ let
   claudeDir = "${config.home.homeDirectory}/dev/personal/.nix/modules/home-manager/programs/claude-code";
 in
 {
-  # Shared Claude Code config for both hosts. claude-code itself is installed
-  # via the aiTools package group in common. Work-specific skills are scoped to
+  # Shared Claude Code config for both hosts. Work-specific skills are scoped to
   # flock in ./flock.nix.
+  programs.claude-code = {
+    enable = true;
+    # The module owns the package now (needed for its managed-MCP plugin), so
+    # claude-code is no longer in the aiTools group in common.
+    package = pkgs.claude-code;
+
+    # CLAUDE.md, settings.json, and keybindings.json are deliberately NOT set
+    # here (context/settings). The module would render them read-only into the
+    # nix store; we keep them as the out-of-store symlinks below so Claude can
+    # rewrite them in place at runtime.
+
+    # ArgoCD MCP server, per-host URL from userConfig. The module emits this as
+    # a generated plugin, so the registration reproduces on every switch
+    # instead of living in the stateful ~/.claude.json. Skipped when this
+    # host has no ArgoCD URL set. ARGOCD_API_TOKEN is a literal reference
+    # Claude expands at launch from the environment (exported via
+    # ~/.config/zsh/secrets.zsh), so no token lands in the repo.
+    mcpServers = lib.optionalAttrs (userConfig.argocd.baseUrl != null) {
+      argocd = {
+        type = "stdio";
+        command = "npx";
+        args = [
+          "-y"
+          "argocd-mcp@latest"
+          "stdio"
+        ];
+        env = {
+          ARGOCD_BASE_URL = userConfig.argocd.baseUrl;
+          ARGOCD_API_TOKEN = "\${ARGOCD_API_TOKEN}";
+        }
+        // lib.optionalAttrs userConfig.argocd.insecure {
+          NODE_TLS_REJECT_UNAUTHORIZED = "0";
+        };
+      };
+    };
+  };
+
   home.file = {
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
     ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";

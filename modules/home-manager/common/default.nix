@@ -78,6 +78,7 @@
           languages = with pkgs; [
             go
             deno
+            nodejs
             pipenv
             python3
             python312Packages.pip
@@ -86,7 +87,8 @@
           ];
 
           aiTools = with pkgs; [
-            claude-code
+            # claude-code is installed by programs.claude-code (it owns the
+            # package for its managed-MCP plugin), not listed here.
             context-stats
             rtk
             github-mcp-server
