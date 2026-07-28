@@ -167,6 +167,11 @@ password in.
   own `master` hasn't adapted yet either, the fix is to temporarily pin
   `nixpkgs.url` in `flake.nix` to the last known-good rev (with a comment
   explaining why and how to un-pin) rather than waiting on `flake update`.
+  The 2026-07-26 instance of this is resolved and the pin is gone — nixpkgs
+  itself reverted the curried refactor by rev `38a48874` (2026-07-27), so
+  `nixpkgs.url` tracks the `nixpkgs-unstable` branch again. Note which side
+  moved: the fix came from nixpkgs backing out, not home-manager adapting, so
+  don't assume a future recurrence resolves the same way.
 - **`just switch`/`just rebuild` hangs indefinitely, seemingly doing nothing**
   (e.g. stuck on a `post-build` step, or a build step just never returns):
   check for a stuck `/nix/store/.../post-build-hook.sh` process (`ps aux |
