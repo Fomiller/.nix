@@ -1,7 +1,7 @@
 ---
 name: daily-summary
-description: Use when the user asks to create, write, or fill out their daily work summary / engineering journal / end-of-day log. Gathers the day's PRs (with their intent), Jira ticket movement, and docs, then creates a NEW Confluence page in Forrest's personal space written as an in-depth engineering journal in the user's voice. Also writes the previous month's narrative monthly summary when a month rolls over.
-version: 2.4.0
+description: Use when the user asks to create, write, or fill out their daily work summary / engineering journal / end-of-day log. Gathers the day's PRs (with their intent), Jira ticket movement, and docs, then creates a NEW Confluence page in Forrest's personal space written as an in-depth engineering journal in the user's voice. Also writes the narrative monthly summary on the first or last weekday of a month.
+version: 2.5.0
 ---
 
 # Daily summary (engineering journal)
@@ -113,11 +113,17 @@ read the month and understand what actually happened.
 
 ### When to write one
 
-Check on **the first or the last daily summary of a month** — i.e. when the target date is either the
-first weekday of its month or the last weekday of its month. On either of those runs, **verify the
-*previous* month has a monthly summary, and write it if it doesn't.**
+Check on **the first or the last daily summary of a month**, and which month gets summarized depends on
+which of those two it is:
 
-- Resolve the previous month's page (`<Month YYYY>`, child of root `4906582100`).
+- **Target date is the last weekday of its month** → summarize **that month**. The month is complete
+  once its last daily page exists, so write it the same run.
+- **Target date is the first weekday of its month** → summarize the **previous** month. This is the
+  catch-up path for when the last-weekday run didn't happen.
+
+Either way, only write if it's missing — resolve that month's page and check:
+
+- Resolve the target month's page (`<Month YYYY>`, child of root `4906582100`).
 - If it doesn't exist at all, the month had no journal — skip it, don't invent one.
 - If it exists but its body is still the one-line stub (no `## ` headings), it needs a summary.
 - If it already has a real summary, leave it alone. Never overwrite a written monthly summary unless
@@ -162,8 +168,9 @@ the daily children, add the summary below it).
      `getConfluencePage` (`contentFormat: markdown`) to match format and avoid repeating yesterday's
      in-progress prose verbatim, **and** to run the gap check above.
    - If the target date is the **first or last weekday of its month**, run the monthly-summary check
-     from "Monthly summary" above against the previous month. Write that summary *after* the daily
-     page lands (Workflow step 6), so a failure there doesn't cost the day's page.
+     from "Monthly summary" above — against **that month** on a last-weekday run, against the
+     **previous** month on a first-weekday run. Write that summary *after* the daily page lands
+     (Workflow step 6), so a failure there doesn't cost the day's page.
 
 2. **Compute the target date's title** `M/DD Daily Summary` (today's date by default, or the date being
    backfilled / explicitly named).
@@ -236,7 +243,7 @@ the daily children, add the summary below it).
    retrying — a blind retry produces a second page titled `<title> (2)`, and there is no delete tool in
    the Atlassian MCP, so the duplicate has to be removed by hand.
 
-6. **Write the previous month's summary** if step 1 flagged it missing. Read that month's daily pages,
+6. **Write the monthly summary** if step 1 flagged it missing. Read that month's daily pages,
    synthesize per "Monthly summary" above, and `updateConfluencePage` the month page. Return its URL
    alongside the daily page's.
 
