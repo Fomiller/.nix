@@ -1,7 +1,7 @@
 ---
 name: daily-summary
-description: Use when the user asks to create, write, or fill out their daily work summary / engineering journal / end-of-day log. Gathers the day's PRs (with their intent), Jira ticket movement, and docs, then creates a NEW Confluence page in Forrest's personal space written as an in-depth engineering journal in the user's voice.
-version: 2.3.0
+description: Use when the user asks to create, write, or fill out their daily work summary / engineering journal / end-of-day log. Gathers the day's PRs (with their intent), Jira ticket movement, and docs, then creates a NEW Confluence page in Forrest's personal space written as an in-depth engineering journal in the user's voice. Also writes the previous month's narrative monthly summary when a month rolls over.
+version: 2.4.0
 ---
 
 # Daily summary (engineering journal)
@@ -25,6 +25,13 @@ happened today and the reasoning behind it," not "status ticker."
   - The month page (title = full month + year, e.g. `July 2026`) is a child of the root. Resolve it by
     title under the root each run; **create it if it doesn't exist yet** (new month = new page).
   - The daily page is a child of that month page.
+  - **The month page is derived from the target date's own month, never from "today".** A page for
+    8/03 goes under `August 2026` even if it's written on 9/01, and a backfill for 7/31 goes under
+    `July 2026` even when the run also creates August pages. A single run can touch two month pages;
+    resolve (and create) each one independently per target date. Getting this wrong files a page under
+    the wrong month and silently breaks the gap check, which walks month pages.
+  - **The month page body holds that month's monthly summary** — see "Monthly summary" below. Until
+    the month is summarized it carries only a one-line stub intro.
 - **Page title format:** `M/DD Daily Summary` (today's date, no zero-padded month; e.g. `7/02 Daily Summary`).
 - **Jira project:** `DO` (SRE board 96). Work is tagged with the `sre-aviation` label.
 - **Forrest's Jira accountId:** `712020:0725a807-b201-4065-8eb4-f690af9ca046`
@@ -98,18 +105,65 @@ whether the journal has holes and fills them before doing anything else:
    (today, or whatever the user named — e.g. "the daily summary for 7/20 and 7/21" runs the full
    sequence once per named date, in order).
 
+## Monthly summary
+
+Each month page carries a narrative recap of that month in its body. It's a different artifact from the
+daily pages: **prose, not a ticket dump.** Someone who never read a single daily page should be able to
+read the month and understand what actually happened.
+
+### When to write one
+
+Check on **the first or the last daily summary of a month** — i.e. when the target date is either the
+first weekday of its month or the last weekday of its month. On either of those runs, **verify the
+*previous* month has a monthly summary, and write it if it doesn't.**
+
+- Resolve the previous month's page (`<Month YYYY>`, child of root `4906582100`).
+- If it doesn't exist at all, the month had no journal — skip it, don't invent one.
+- If it exists but its body is still the one-line stub (no `## ` headings), it needs a summary.
+- If it already has a real summary, leave it alone. Never overwrite a written monthly summary unless
+  the user asks.
+
+Backfill runs count. If a run backfills across a month boundary, the check fires on whichever target
+date qualifies, same as a normal run.
+
+### How to write one
+
+Read that month's daily pages — `getConfluencePageDescendants` on the month page, then
+`getConfluencePage` (`contentFormat: markdown`) on each — and synthesize. **Do not re-run the Jira,
+PR, and commit queries for the whole month;** the daily pages already did that work and re-querying
+30 days of history is slow and blows the context. The daily pages are the source.
+
+Write it as **a few themed threads, not a chronology.** The unit is "the param-store migration" or
+"getting golden-files fleet-wide," not "on the 14th I did X." For each thread: what the problem was,
+what got built or decided, where it ended the month, and what's carrying into the next one. Name the
+handful of tickets and PRs that genuinely mattered — a few key ones inline, not an exhaustive list.
+If a decision got reversed or an approach got thrown away, say so and say why; that's the part worth
+remembering later.
+
+Length: enough to be useful, short enough to actually get read. Roughly a screen or two. Same voice as
+the daily pages — plain, direct, engineer-to-engineer — but pitched at a month's altitude, so skip the
+per-PR mechanics and keep the reasoning.
+
+Write it with `updateConfluencePage` on the month page (keep the title, keep a one-line intro noting
+the daily children, add the summary below it).
+
 ## Workflow
 
 1. **Resolve the month parent + read the latest daily page.**
    - The **Daily Summary root** is page `4906582100` (under the homepage). Confirm it exists.
-   - Find this run's **month page** under the root — title = `<Month YYYY>` (e.g. `July 2026`). Query
-     `searchConfluenceUsingCql` with `space = "~7120200725a807b20140658eb4f690af9ca046" AND title = "<Month YYYY>"`,
-     or list the root's children. **If the month page doesn't exist, create it** with `createConfluencePage`
-     (`spaceId 3644915744`, `parentId 4906582100`, a one-line intro body). Its id is the daily page's `parentId`.
-     A backfill date that crosses into a new month needs its own month-page lookup/creation the same way.
+   - Find the month page for **the target date's month** — title = `<Month YYYY>` (e.g. `July 2026`).
+     Derive it from the date being written, not from today's date. Query `searchConfluenceUsingCql`
+     with `space = "~7120200725a807b20140658eb4f690af9ca046" AND title = "<Month YYYY>"`, or list the
+     root's children. **If the month page doesn't exist, create it** with `createConfluencePage`
+     (`spaceId 3644915744`, `parentId 4906582100`, a one-line intro body). Its id is the daily page's
+     `parentId`. Every target date in a run resolves its own month page — a run spanning a month
+     boundary creates the new month page partway through and files the rest of its pages there.
    - Read the latest `... Daily Summary` page (in this month, or last month if it's the 1st) with
      `getConfluencePage` (`contentFormat: markdown`) to match format and avoid repeating yesterday's
      in-progress prose verbatim, **and** to run the gap check above.
+   - If the target date is the **first or last weekday of its month**, run the monthly-summary check
+     from "Monthly summary" above against the previous month. Write that summary *after* the daily
+     page lands (Workflow step 6), so a failure there doesn't cost the day's page.
 
 2. **Compute the target date's title** `M/DD Daily Summary` (today's date by default, or the date being
    backfilled / explicitly named).
@@ -162,8 +216,11 @@ whether the journal has holes and fills them before doing anything else:
      something like "Bypassed rule violations") — that's a notable callout for the journal, not routine.
    - **Docs written today:** `searchConfluenceUsingCql` with
      `creator = "712020:0725a807-b201-4065-8eb4-f690af9ca046" AND type = page AND lastmodified >= "<today>" ORDER BY lastmodified DESC`
-     (exclude any `... Daily Summary` / `... This Week Last Week` page). `getConfluencePage` each to write
-     an accurate 1–2 sentence summary.
+     (exclude any `... Daily Summary` / `... This Week Last Week` page, and any `<Month YYYY>` month
+     page — those are this journal's own scaffolding, not docs written). `getConfluencePage` each to
+     write an accurate 1–2 sentence summary. **Check the latest version's author** before listing a
+     page: this query matches on `creator`, so a page Forrest created months ago shows up when someone
+     else edits it today. If the current version was authored by someone else, leave it out.
 
 4. **Compose the page** (markdown `contentFormat`) using the sections above. Each entry is a short
    paragraph or rich bullet — enough to convey intent and reasoning — with Jira
@@ -174,6 +231,14 @@ whether the journal has holes and fills them before doing anything else:
 5. **Create the page** with `createConfluencePage`:
    `cloudId=flocksafety.atlassian.net`, `spaceId=3644915744` (personal space),
    `parentId=<the month page id from step 1>`, computed title, markdown body. Return the page URL.
+
+   If `createConfluencePage` **times out, assume it may have succeeded.** Search for the title before
+   retrying — a blind retry produces a second page titled `<title> (2)`, and there is no delete tool in
+   the Atlassian MCP, so the duplicate has to be removed by hand.
+
+6. **Write the previous month's summary** if step 1 flagged it missing. Read that month's daily pages,
+   synthesize per "Monthly summary" above, and `updateConfluencePage` the month page. Return its URL
+   alongside the daily page's.
 
 ## Voice
 
@@ -220,4 +285,35 @@ AWS accounts."_
 ## Notes
 
 * <any note the user asked to include — otherwise leave "* " empty>
+```
+
+## Reference: month page skeleton
+
+The month page before it's summarized — just the stub created in Workflow step 1:
+
+```markdown
+Daily summaries for <Month YYYY>. One child page per day (M/DD Daily Summary).
+```
+
+And after (this is what "has a monthly summary" looks like):
+
+```markdown
+Daily summaries for <Month YYYY>. One child page per day (M/DD Daily Summary).
+
+## The month in one paragraph
+
+<What the month was actually about. Two or three sentences, no lists.>
+
+## <Thread name — e.g. "Parameter Store migration">
+
+<What the problem was, what got built, where it landed, what's carrying forward. A paragraph or two.
+Name the few tickets/PRs that mattered inline — [DO-XXXX](...) — not every one that touched it.>
+
+## <Second thread>
+
+<Same shape.>
+
+## Carrying into <next month>
+
+* <Open thread, and what state it's in.>
 ```

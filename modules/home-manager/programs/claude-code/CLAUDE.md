@@ -43,8 +43,13 @@ migration steps. Omit this section entirely if not needed.>
 
 ### Code comments
 
+- Comment rarely. Default to no comment. Readable code beats a comment.
+- Only comment when the reason for the code isn't obvious, or the logic is
+  complex enough that a reader won't follow it on first pass.
+- When you do comment, 1–2 lines max.
 - Comment the *why*, not the *what* — assume the reader can read the code.
-- Match the surrounding file's comment density and style; don't over-annotate.
+- Never restate what the next line does, never label sections, never add
+  docstring-style headers to a function that doesn't need one.
 
 ## PR titles
 
