@@ -4,6 +4,7 @@
   lib,
   userConfig,
   outputs,
+  hostname,
   ...
 }:
 {
@@ -135,10 +136,14 @@
             lua51Packages.tree-sitter-cli
           ];
 
-          flock = with pkgs; [
-            aws-iam-authenticator
-            tailscale
-          ];
+          # flock-cli lives in a private Flock repo, so it's only fetchable
+          # (and only useful) on the work machine.
+          flock =
+            (with pkgs; [
+              aws-iam-authenticator
+              tailscale
+            ])
+            ++ lib.optional (hostname == "flock-mac") pkgs.flock-cli;
 
           k8s = with pkgs; [
             argocd
