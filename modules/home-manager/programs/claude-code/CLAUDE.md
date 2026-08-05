@@ -19,10 +19,30 @@ read as AI-generated — the goal is to sound plain and direct.
 - Prefer bullets over dense prose for any list — above/below splits, steps,
   verification results.
 
+### PR description length
+
+Match the description to the size of the change. Two tiers:
+
+**Simple changes — 1–2 sentences, no headings at all.** Use this tier when a
+reviewer gets the whole change from a glance at the diff: version and
+dependency bumps, typo or comment fixes, renames, changing a config value,
+adding a tag or label, deleting dead code, single-file mechanical edits. Say
+what changed and why, then stop. No Summary/Why/Note headings. No bullet list
+restating the diff. No explaining what the code does.
+
+- Yes: `Bumps the provider pin to 5.31.0 so we can use the new egress fields.`
+- No: a Summary heading, a Why heading, and three bullets for a one-line bump.
+
+**Non-trivial changes — use the structure below.** New behavior, multi-file
+changes, anything with a migration, a rollout order, or a reason a reviewer
+can't infer from the code.
+
+When unsure which tier fits, pick the short one.
+
 ### PR description structure
 
-Lead with one high-level sentence, then the sections below. Keep it all short
-and skimmable:
+For non-trivial changes only. Lead with one high-level sentence, then the
+sections below. Keep it all short and skimmable:
 
 ```
 <one plain sentence summarizing the whole change, before the Summary heading>
