@@ -21,28 +21,35 @@ read as AI-generated — the goal is to sound plain and direct.
 
 ### PR description length
 
-Match the description to the size of the change. Two tiers:
+Match the description to the size of the change. Three tiers. Default to the
+smallest one that fits; when unsure between two, pick the shorter.
 
-**Simple changes — 1–2 sentences, no headings at all.** Use this tier when a
-reviewer gets the whole change from a glance at the diff: version and
-dependency bumps, typo or comment fixes, renames, changing a config value,
-adding a tag or label, deleting dead code, single-file mechanical edits. Say
-what changed and why, then stop. No Summary/Why/Note headings. No bullet list
-restating the diff. No explaining what the code does.
+**Basic — one sentence, no headings.** For changes a reviewer fully gets from a
+glance at the diff: version and dependency bumps, typo or comment fixes,
+renames, changing a config value, adding a tag or label, deleting dead code.
+Say what changed and why, then stop.
 
 - Yes: `Bumps the provider pin to 5.31.0 so we can use the new egress fields.`
 - No: a Summary heading, a Why heading, and three bullets for a one-line bump.
 
-**Non-trivial changes — use the structure below.** New behavior, multi-file
-changes, anything with a migration, a rollout order, or a reason a reviewer
-can't infer from the code.
+**Less basic — 2–3 sentences of prose, still no headings.** For a real behavior
+change that's small in surface area, typically one or two files. First sentence
+is the same as Basic: what changed and why, with the ticket linked inline. The
+extra sentences exist only to answer the question a reviewer would otherwise
+have to ask — usually "what does this *not* change?" or "what's still safe?".
+No bullet list restating the diff. No explaining what the code does.
 
-When unsure which tier fits, pick the short one.
+Most PRs land in one of the two tiers above.
+
+**Full — the heading structure below.** Only when the PR genuinely needs it: a
+migration, a rollout order across repos, several unrelated changes in one PR,
+or a reason a reviewer can't infer from the code. A single-file change basically
+never qualifies.
 
 ### PR description structure
 
-For non-trivial changes only. Lead with one high-level sentence, then the
-sections below. Keep it all short and skimmable:
+For the Full tier only. Lead with one high-level sentence, then the sections
+below. Keep it all short and skimmable:
 
 ```
 <one plain sentence summarizing the whole change, before the Summary heading>
