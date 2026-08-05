@@ -25,7 +25,8 @@
     "cloudflare@cloudflare": true,
     "gopls-lsp@claude-plugins-official": true,
     "github@claude-plugins-official": false,
-    "terraform@claude-plugins-official": true
+    "terraform@claude-plugins-official": true,
+    "flox@flox-skills": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
@@ -39,12 +40,18 @@
         "source": "github",
         "repo": "cloudflare/skills"
       }
+    },
+    "flox-skills": {
+      "source": {
+        "source": "github",
+        "repo": "flox/flox-skills"
+      }
     }
   },
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "agentPushNotifEnabled": true,
-  "skipAutoPermissionPrompt": true,
-  "effortLevel": "medium"
+  "skipAutoPermissionPrompt": true
 }
