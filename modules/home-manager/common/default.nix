@@ -118,6 +118,7 @@
             stable.grafana
             grafana-alloy
             htop
+            hugo
             jq
             just
             lazydocker
