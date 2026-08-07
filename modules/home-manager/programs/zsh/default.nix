@@ -8,8 +8,9 @@
       vi = "nvim";
       # claude code
       cl = "claude";
-      # --worktree routes through worktrunk via its plugin's WorktreeCreate hook.
-      clc = "claude --dangerously-skip-permissions --worktree";
+      # No --worktree: the ticket isn't known at launch, so it would only ever
+      # get a random name. Claude makes the worktree mid-session instead.
+      clc = "claude --dangerously-skip-permissions";
       # git
       ga = "git add";
       gp = "git pull";

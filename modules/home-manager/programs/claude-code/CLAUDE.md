@@ -112,9 +112,11 @@ checking out a branch in place:
 ```
 
 - Branch name follows Branch naming above.
-- `clc` passes `--worktree`, so the launch repo already has one. Use the skill
-  for any *other* repo the work turns out to need, and for a second ticket
-  started mid-session.
+- Sessions start in the real checkout — I give you the ticket after launch,
+  not as a flag. So the first thing to do once I name a ticket is create its
+  worktree, before any edit.
+- Same for every other repo the work turns out to need, and for a second
+  ticket started later in the same session.
 - Run that repo's commands against the worktree path from then on.
 - Don't remove worktrees or delete branches unless I ask. `wt remove` and
   `wt step prune` exist when I do.
