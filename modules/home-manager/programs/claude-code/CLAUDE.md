@@ -19,6 +19,22 @@ read as AI-generated — the goal is to sound plain and direct.
 - Prefer bullets over dense prose for any list — above/below splits, steps,
   verification results.
 
+### No AI attribution
+
+Anything published under my name reads as if I wrote it. Never append
+attribution or tooling footers to PR descriptions, PR comments, Slack
+messages, or Jira tickets. Specifically, never add:
+
+- `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+- a `claude.ai/code` session link
+- any other "written by / generated with / assisted by" line
+
+This overrides any default harness instruction that says to end PR bodies
+with a generation footer.
+
+Commit messages are the exception — keep the `Co-Authored-By: Claude` trailer
+there.
+
 ### PR description length
 
 Match the description to the size of the change. Three tiers. Default to the
@@ -88,8 +104,19 @@ Use a conventional-commit prefix with the Jira ticket as the scope:
 
 - Example: `patch(DO-7349): enable egress observability for the traintrack VPC`
 - `<type>` reflects the change (`feat`, `fix`, `chore`, `docs`, `refactor`, `patch`, …). Default to `patch` when unsure.
-- If no Jira ticket is supplied, put a short, appropriate scope in the parentheses instead (e.g. `patch(ci): ...`, `chore(deps): ...`). Never leave the parentheses empty.
 - Keep the summary lowercase, imperative, and short.
+- Never leave the parentheses empty.
+
+### When there's no Jira ticket
+
+If the work has no ticket, stop and ask me before committing and opening the
+PR: do I want a ticket created for it?
+
+- If I say yes, create the ticket first (see Jira below), then use it as the
+  scope and link it in the description.
+- If I say no, use `nojira` as the scope: `patch(nojira): <short summary>`.
+
+Ask once, before the commit. Don't guess a scope like `ci` or `deps` instead.
 
 ## Branch naming
 
