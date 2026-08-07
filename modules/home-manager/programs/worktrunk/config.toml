@@ -1,0 +1,5 @@
+# worktrunk (`wt`) — git worktree manager. Package lives in packageGroups.devTools.
+#
+# Default layout is `../<repo>.<branch>`, a sibling of the repo. Central
+# directory instead, so worktrees for every repo sit in one place.
+worktree-path = "~/dev/worktrees/{{ repo }}/{{ branch | sanitize }}"

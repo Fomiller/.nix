@@ -22,6 +22,7 @@
     ../programs/rbenv
     ../programs/starship
     ../programs/tmux
+    ../programs/worktrunk
     ../programs/zoxide
     ../programs/zsh
   ];
@@ -133,6 +134,7 @@
             tgswitch
             twitch-cli
             watch
+            worktrunk
             yq-go
             lua51Packages.tree-sitter-cli
           ];

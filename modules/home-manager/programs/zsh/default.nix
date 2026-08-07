@@ -8,7 +8,8 @@
       vi = "nvim";
       # claude code
       cl = "claude";
-      clc = "claude --dangerously-skip-permissions";
+      # --worktree routes through worktrunk via its plugin's WorktreeCreate hook.
+      clc = "claude --dangerously-skip-permissions --worktree";
       # git
       ga = "git add";
       gp = "git pull";
@@ -51,6 +52,11 @@
       export PATH="$HOME/.opencode/bin:$PATH"
       export TERRAGRUNT_FORWARD_TF_STDOUT=1
       export AWS_ASSUME_CONFIG_DIR="$HOME"
+
+      # worktrunk's `wt` is a shell function, not just a binary — `wt switch`
+      # cds the calling shell, which a subprocess can't do. Guarded because
+      # this line lands in .zshrc before the switch that installs the package.
+      command -v wt >/dev/null 2>&1 && eval "$(wt config shell init zsh)"
 
       # Secrets/API keys (e.g. ANTHROPIC_API_KEY) live outside this git repo.
       # Create this file by hand; it's never read or written by nix.

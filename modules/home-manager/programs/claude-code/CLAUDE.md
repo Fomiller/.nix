@@ -98,6 +98,43 @@ Use a conventional-commit prefix with the Jira ticket as the scope:
 - When no ticket is supplied, use a short descriptive kebab-case name.
 - Never rename a branch via GitHub's branch-rename API on an open PR — it auto-closes the PR.
 
+## Worktrees
+
+Worktrees are managed by worktrunk (`wt`). Paths come from its config, so
+never pass one yourself.
+
+Whenever you'd create a new branch for a ticket, make a worktree instead of
+checking out a branch in place:
+
+```
+/wt-switch-create DO-1234                       # this repo
+/wt-switch-create DO-1234 ~/dev/work/other-repo # a different repo
+```
+
+- Branch name follows Branch naming above.
+- `clc` passes `--worktree`, so the launch repo already has one. Use the skill
+  for any *other* repo the work turns out to need, and for a second ticket
+  started mid-session.
+- Run that repo's commands against the worktree path from then on.
+- Don't remove worktrees or delete branches unless I ask. `wt remove` and
+  `wt step prune` exist when I do.
+
+`wt switch --create` branches from local `main` and does not fetch. When the
+branch needs to start from current upstream, do it by hand instead:
+
+```sh
+git -C <repo> fetch origin
+wt -C <repo> switch --create DO-1234 --base origin/main
+```
+
+Exceptions — work in the real checkout, no worktree:
+
+- No new branch needed: committing to a branch that already exists, or
+  anything read-only.
+- `~/dev/personal/.nix`. `just switch` and the out-of-store symlinks in
+  `programs/claude-code` and `programs/worktrunk` resolve that absolute path,
+  so edits made in a worktree never take effect.
+
 ## Jira
 
 When creating a Jira ticket, unless specifically told otherwise:

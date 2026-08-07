@@ -26,7 +26,8 @@
     "gopls-lsp@claude-plugins-official": true,
     "github@claude-plugins-official": false,
     "terraform@claude-plugins-official": true,
-    "flox@flox-skills": true
+    "flox@flox-skills": true,
+    "worktrunk@worktrunk": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
@@ -45,6 +46,12 @@
       "source": {
         "source": "github",
         "repo": "flox/flox-skills"
+      }
+    },
+    "worktrunk": {
+      "source": {
+        "source": "github",
+        "repo": "max-sixty/worktrunk"
       }
     }
   },
