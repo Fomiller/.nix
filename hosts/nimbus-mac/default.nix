@@ -1,7 +1,9 @@
 {
   self,
+  lib,
   pkgs,
   outputs,
+  atticCache,
   ...
 }:
 {
@@ -21,10 +23,23 @@
       # build — unlike trusted-substituters, which only pre-approves what an
       # already-trusted user may additionally request, and this machine's
       # only trusted-user is root.
-      extra-substituters = [ "https://cache.flox.dev" ];
+      #
+      # The Attic entries drop out entirely while atticCache.publicKey is
+      # empty (see flake.nix) — the server mints the keypair at
+      # `attic cache create`, so it doesn't exist before the first deploy.
+      extra-substituters = [
+        "https://cache.flox.dev"
+      ] ++ lib.optional (atticCache.publicKey != "") "${atticCache.endpoint}/${atticCache.cacheName}";
       extra-trusted-public-keys = [
         "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-      ];
+      ] ++ lib.optional (atticCache.publicKey != "") atticCache.publicKey;
+
+      # No netrc-file here on purpose. The Attic cache is private, so the
+      # daemon needs a token to pull from it, but Determinate pins
+      # netrc-file = /nix/var/determinate/netrc in its own /etc/nix/nix.conf
+      # (after the !include of this file, so it would win anyway) and the
+      # module asserts against overriding it. The attic entry is appended to
+      # that file by hand — see k8s/apps/attic/README.md in the homelab repo.
     };
   };
 
