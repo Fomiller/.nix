@@ -71,9 +71,9 @@
       # with a key that doesn't verify anything.
       atticCache = {
         serverName = "fomiller";
-        cacheName = "homelab";
+        cacheName = "main";
         endpoint = "https://attic.fomiller.com";
-        publicKey = "";
+        publicKey = "main:/1qPNVCZKSyH9Cxx9OYCX7mdwEUaZnB7vlKC8ZoqLP4=";
       };
 
       users = {
