@@ -59,6 +59,23 @@
     let
       inherit (self) outputs;
 
+      # Self-hosted Attic binary cache running in the homelab cluster
+      # (Fomiller/homelab, k8s/apps/attic). Shared by the darwin configs,
+      # which add it as a daemon-level substituter, and by the home-manager
+      # attic module, which runs `attic watch-store` against it.
+      #
+      # publicKey is empty until `attic cache create` has actually run — the
+      # server mints the keypair, so it can't be known ahead of the first
+      # deploy. While it's empty both the substituter and the watch-store
+      # agent stay switched off, which is better than half-configuring Nix
+      # with a key that doesn't verify anything.
+      atticCache = {
+        serverName = "fomiller";
+        cacheName = "homelab";
+        endpoint = "https://attic.fomiller.com";
+        publicKey = "";
+      };
+
       users = {
         "forrest" = {
           email = "forrestmillerj@gmail.com";
@@ -98,6 +115,7 @@
               inputs
               outputs
               hostname
+              atticCache
               ;
             userConfig = users.${username};
           };
@@ -114,7 +132,12 @@
         home-manager.lib.homeManagerConfiguration {
           pkgs = import nixpkgs { inherit system; };
           extraSpecialArgs = {
-            inherit inputs outputs hostname;
+            inherit
+              inputs
+              outputs
+              hostname
+              atticCache
+              ;
             userConfig = users.${username};
             nhModules = "${self}/modules/home-manager";
           };

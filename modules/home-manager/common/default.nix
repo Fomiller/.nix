@@ -10,6 +10,7 @@
 {
   imports = [
     ../filesystem
+    ../programs/attic
     ../programs/bat
     ../programs/claude-code
     ../programs/direnv
