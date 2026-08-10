@@ -7,6 +7,8 @@
   ...
 }:
 {
+  imports = [ ../../modules/darwin/attic-netrc ];
+
   # Determinate Systems' own nix-darwin module manages Determinate Nix
   # directly (this forces nix.enable = false internally, and customSettings
   # is written to /etc/nix/nix.custom.conf, which Determinate's own
@@ -38,8 +40,8 @@
       # daemon needs a token to pull from it, but Determinate pins
       # netrc-file = /nix/var/determinate/netrc in its own /etc/nix/nix.conf
       # (after the !include of this file, so it would win anyway) and the
-      # module asserts against overriding it. The attic entry is appended to
-      # that file by hand — see k8s/apps/attic/README.md in the homelab repo.
+      # module asserts against overriding it. The attic entry in that file is
+      # written on activation instead — see modules/darwin/attic-netrc.
     };
   };
 
