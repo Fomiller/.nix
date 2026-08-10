@@ -42,7 +42,11 @@ attic-login:
 
     attic login fomiller "$endpoint" "$token"
 
+    # Staged through a temp file rather than piped into `sudo tee`: a pipe on
+    # stdin is where sudo reads the password from, so it eats the token.
     umask 077
-    printf '%s' "$token" | sudo tee /etc/nix/attic-token >/dev/null
-    sudo chmod 600 /etc/nix/attic-token
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    printf '%s' "$token" > "$tmp"
+    sudo install -m 600 -o root -g wheel "$tmp" /etc/nix/attic-token
     echo "attic ok. run 'just rebuild <host>' to write the netrc entry."
