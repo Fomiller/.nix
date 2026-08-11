@@ -118,6 +118,33 @@ PR: do I want a ticket created for it?
 
 Ask once, before the commit. Don't guess a scope like `ci` or `deps` instead.
 
+## Default branch
+
+Never hardcode `main`. Not every repo's trunk is `main` — e.g.
+`aerodome-usa/infrastructure` is `development`, and a stale `main` still exists
+there. Resolve it before branching, rebasing, or opening a PR:
+
+```sh
+wt -C <repo> config state default-branch
+```
+
+For `gh pr create`, leave `--base` off. `gh` reads the remote's default branch,
+so it's right even when local refs are stale. Pass `--base` only when the PR
+genuinely targets something else (e.g. a release branch).
+
+The harness's "Main branch (you will usually use this for PRs)" line and `wt`'s
+answer both come from local caches (`git config worktrunk.default-branch`, then
+`origin/HEAD`), and neither is re-validated. When a repo's real trunk differs
+from what they report, refresh both instead of working around it:
+
+```sh
+git -C <repo> remote set-head origin -a
+wt -C <repo> config state default-branch clear
+```
+
+`gh repo view -R <owner>/<repo> --json defaultBranchRef -q .defaultBranchRef.name`
+is the authoritative answer when the local caches are in doubt.
+
 ## Branch naming
 
 - When a Jira ticket is supplied, prefix the branch with the ticket number: `DO-7349-<short-desc>` (e.g. `DO-7349-egress-observability`).
@@ -148,12 +175,14 @@ checking out a branch in place:
 - Don't remove worktrees or delete branches unless I ask. `wt remove` and
   `wt step prune` exist when I do.
 
-`wt switch --create` branches from local `main` and does not fetch. When the
-branch needs to start from current upstream, do it by hand instead:
+`wt switch --create` bases off the repo's detected default branch (see Default
+branch above) and does not fetch, so a stale local trunk means a stale branch
+base. When the branch needs to start from current upstream, do it by hand
+instead:
 
 ```sh
 git -C <repo> fetch origin
-wt -C <repo> switch --create DO-1234 --base origin/main
+wt -C <repo> switch --create DO-1234 --base origin/$(wt -C <repo> config state default-branch)
 ```
 
 Exceptions — work in the real checkout, no worktree:
