@@ -26,6 +26,7 @@
     "gopls-lsp@claude-plugins-official": true,
     "github@claude-plugins-official": false,
     "terraform@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
     "flox@flox-skills": true,
     "worktrunk@worktrunk": true
   },
