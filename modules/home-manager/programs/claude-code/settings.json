@@ -26,7 +26,9 @@
     "gopls-lsp@claude-plugins-official": true,
     "github@claude-plugins-official": false,
     "terraform@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
     "flox@flox-skills": true,
+    "mattpocock-skills@mattpocock": true,
     "worktrunk@worktrunk": true
   },
   "extraKnownMarketplaces": {
@@ -46,6 +48,12 @@
       "source": {
         "source": "github",
         "repo": "flox/flox-skills"
+      }
+    },
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
       }
     },
     "worktrunk": {
