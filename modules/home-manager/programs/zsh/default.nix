@@ -8,9 +8,7 @@
       vi = "nvim";
       # claude code
       cl = "claude";
-      # No --worktree: the ticket isn't known at launch, so it would only ever
-      # get a random name. Claude makes the worktree mid-session instead.
-      clc = "claude --dangerously-skip-permissions";
+      # clc is a function, not an alias — see ./claude-session.zsh.
       # git
       ga = "git add";
       gp = "git pull";
@@ -103,6 +101,7 @@
       bindkey -M emacs '^G' fzf-cd-widget
       bindkey -M vicmd '^G' fzf-cd-widget
       bindkey -M viins '^G' fzf-cd-widget
-    '';
+    ''
+    + builtins.readFile ./claude-session.zsh;
   };
 }

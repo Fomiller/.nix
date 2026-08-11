@@ -51,6 +51,12 @@ in
     };
   };
 
+  home.packages = [
+    (pkgs.writeScriptBin "claude-rename" (
+      "#!${pkgs.python3}/bin/python3\n" + builtins.readFile ./claude-rename.py
+    ))
+  ];
+
   home.file = {
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
     ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";

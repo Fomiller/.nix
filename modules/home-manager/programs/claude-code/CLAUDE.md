@@ -175,6 +175,24 @@ checking out a branch in place:
 - Don't remove worktrees or delete branches unless I ask. `wt remove` and
   `wt step prune` exist when I do.
 
+`clc` names the session after the launch directory — `repo` in a real
+checkout, `repo:branch` in a worktree, plus a `-2`/`-3` suffix if a live
+session already holds that name. A session that starts inside a ticket's
+worktree is therefore already named after the ticket; one that starts in the
+real checkout is not.
+
+So once I name a ticket and you've made its worktree, rename yourself:
+
+```sh
+claude-rename DO-1234
+```
+
+That sends a control message to the session's own messaging socket, which is
+the same path `/rename` takes. It prints `renamed session <pid> to DO-1234` on
+success. If it says the session has no messaging socket, the session predates
+this setup or wasn't started by `clc` — ask me to type `/rename DO-1234`
+instead.
+
 `wt switch --create` bases off the repo's detected default branch (see Default
 branch above) and does not fetch, so a stale local trunk means a stale branch
 base. When the branch needs to start from current upstream, do it by hand
