@@ -185,15 +185,38 @@ password in.
   back after a reboot — it's only meant to be revived via on-demand socket
   activation on `/var/run/nix-daemon.socket` /
   `/var/run/determinate-nixd.socket`, and that hasn't reliably kept a
-  persistent FIFO-reading instance up across reboots in practice. Confirm via
-  `sudo launchctl print system/systems.determinate.nix-daemon` (look for
-  `state = running` / a recent `pid`) and by checking
-  `/var/log/determinate-nix-daemon.log` for a `Shutting down on Terminate`
-  entry with no further activity after it (a graceful shutdown, not a crash,
-  usually right at the last reboot per `sysctl kern.boottime`). Fix: `sudo
-  launchctl kickstart -k system/systems.determinate.nix-daemon` — this
-  immediately drains any backlog of stuck `post-build-hook.sh` writers once
-  a fresh instance is listening again.
+  persistent FIFO-reading instance up across reboots in practice. Socket
+  activation can't help here either: a `write()` to a FIFO isn't a connection
+  to either socket, so the blocked hook never wakes the daemon it's waiting
+  on. Confirm with `pgrep -fl determinate-nixd` (no output = dead; works
+  without sudo, unlike `sudo launchctl print
+  system/systems.determinate.nix-daemon`) plus the last timestamp in
+  `/var/log/determinate-nix-daemon.log` — if it predates the hang, or predates
+  `sysctl -n kern.boottime`, the daemon is gone. Immediate unblock: `sudo
+  launchctl kickstart -k system/systems.determinate.nix-daemon`, which drains
+  any backlog of stuck `post-build-hook.sh` writers once a fresh instance is
+  listening.
+
+  Permanent fix, applied 2026-08-11 on `nimbus-mac`: the plist now sets
+  `RunAtLoad = true` and `KeepAlive = true`, so launchd starts the daemon at
+  boot and restarts it if it exits. Original saved alongside as
+  `systems.determinate.nix-daemon.plist.bak`. Apply/re-apply with:
+
+  ```sh
+  sudo launchctl bootout system/systems.determinate.nix-daemon
+  sudo launchctl bootstrap system /Library/LaunchDaemons/systems.determinate.nix-daemon.plist
+  ```
+
+  This is a system file outside the flake — nothing in this repo manages it,
+  and a Determinate upgrade rewrites the plist back to the stock
+  `RunAtLoad = false` / no `KeepAlive`. So if the hangs return, check those two
+  keys before re-diagnosing anything else. `flock-mac` hit the same hang and
+  may still be unpatched.
+
+  Not a fix: overriding `post-build-hook` in `determinateNix.customSettings`.
+  `/etc/nix/nix.conf` `!include`s `nix.custom.conf` *above* its own
+  `post-build-hook =` line, so nix.conf wins. Killing the hook means editing
+  `/etc/nix/nix.conf` directly, which Determinate also overwrites.
 
 ## Git
 
