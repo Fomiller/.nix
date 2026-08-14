@@ -17,6 +17,17 @@ in
   # rewrites this file for FlakeHub auth and drops the attic entry, which
   # turns every substitution into a silent 401.
   #
+  # A macOS update reboot does the same thing — determinate-nixd rewrites the
+  # file when it restarts, so every OS update costs a `just rebuild <host>`
+  # before the cache works again. Hit on 2026-08-14 (macOS 15.7.9).
+  #
+  # If that gets annoying, move this to a launchd daemon with WatchPaths on the
+  # netrc instead of (or alongside) activation. That catches every rewrite, not
+  # just reboots. Don't use RunAtLoad — it races determinate-nixd's own startup
+  # rewrite and launchd has no "after service X" ordering. WatchPaths needs a
+  # guard that exits when the attic line is already correct, or the script's
+  # own mv re-fires it forever.
+  #
   # The token is bootstrapped out of band by `just attic-login` because
   # /nix/store is world-readable. That leaves one manual step per machine.
   # If that becomes annoying, this refactors to the sops-nix (or agenix)
