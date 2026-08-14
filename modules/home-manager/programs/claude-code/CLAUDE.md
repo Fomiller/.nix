@@ -13,9 +13,10 @@ read as AI-generated — the goal is to sound plain and direct.
 - Only explain what a reviewer actually needs; don't pad.
 - One idea per sentence. Don't chain clauses with em-dashes or stack
   parentheticals — if a sentence needs re-reading to parse, split it.
-- Aim for a low reading level, but stay engineer-tailored: keep the precise
-  terms a reviewer needs (e.g. glob, marker, reconcile, drift check). Simplify
-  the wording, not the concepts.
+- Write every PR description at a 10th grade reading level.
+- Low reading level, but stay engineer-tailored: keep the precise terms a
+  reviewer needs (e.g. glob, marker, reconcile, drift check). Simplify the
+  wording, not the concepts.
 - Prefer bullets over dense prose for any list — above/below splits, steps,
   verification results.
 
