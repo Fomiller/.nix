@@ -34,36 +34,25 @@ some generic wording in README.md — both configured hosts are Macs.
 ```sh
 just switch <host>   # home-manager switch (user-level: packages, dotfiles, programs)
 just rebuild <host>   # sudo darwin-rebuild switch (system-level: homebrew, fonts, macOS defaults)
-just flake-update    # bare `nix flake update`; run it yourself when you want new inputs
+just flake-update    # bare `nix flake update`, also runs automatically before switch/rebuild
 ```
 
-`<host>` is the short flake name: `nimbus` or `flock`.
+`<host>` is the short flake name: `nimbus` or `flock`. Both `switch` and
+`rebuild` depend on `flake-update`, so every apply pulls fresh flake inputs
+first — there's no separate "check for updates" step, don't add one. This is
+deliberate and was reaffirmed on 2026-08-15; don't propose decoupling it again.
 
-`switch` and `rebuild` build from the committed `flake.lock`. They do not
-update it. Pulling in new inputs is a separate, deliberate step:
-
-```sh
-just flake-update && just switch <host>   # then commit flake.lock
-```
-
-`switch` and `rebuild` used to depend on `flake-update`, so every apply bumped
-every input. That was removed on 2026-08-15. Two reasons:
-
-- Both machines run the same pinned inputs, so a break on one reproduces on
-  the other. Under the old behavior each machine locked whatever
-  `nixpkgs-unstable` was at that minute, and `flake.lock` was dirty after
-  every apply.
-- Most entries in "Known gotchas" below are an unstable bump breaking
-  something. Rolling back now means checking out an older `flake.lock`.
-
-Don't add the dependency back.
+Consequence to expect: every apply rewrites `flake.lock`, so the tree is dirty
+after any `switch` or `rebuild`, and the two machines pin whatever
+`nixpkgs-unstable` was at the minute each one ran.
 
 `flake.lock` is machine-independent — pinned input revs and hashes, no
 hostname, user, or system in it. Per-host differences live in `flake.nix`,
 `hosts/<host>/`, and `home/<host>/`, which evaluate against those same inputs.
-Commit it; both machines share one lock. It conflicts across machines as an
-unmergeable blob — take either side wholesale and re-run `just flake-update`,
-never hand-edit the hashes.
+Commit it; both machines share one lock, and it's what an unstable bump gets
+rolled back to. It conflicts across machines as an unmergeable blob — take
+either side wholesale and re-run `just flake-update`, never hand-edit the
+hashes.
 
 **Both commands are required for full parity** — home-manager is not wired
 into the darwin module. A `rebuild` alone will not update user packages or

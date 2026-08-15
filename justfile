@@ -1,4 +1,4 @@
-switch flake:
+switch flake: flake-update
     home-manager switch --flake ".#{{flake}}"
 
 # --extra-experimental-features is a backstop: nix-command/flakes are enabled
@@ -6,11 +6,11 @@ switch flake:
 # silently orphaned /etc/nix/nix.conf before, so this keeps `just` working
 # even if that happens again.
 
-# Update all flake inputs. Not run by switch/rebuild — commit the lock after.
+# Update all flake inputs. Runs automatically before switch and rebuild.
 flake-update:
     nix --extra-experimental-features "nix-command flakes" flake update
 
-rebuild flake:
+rebuild flake: flake-update
     #!/usr/bin/env bash
     set -euo pipefail
     # On a fresh install (or the first time this repo's determinateNix module
