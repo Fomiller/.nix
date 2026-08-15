@@ -48,7 +48,7 @@
   home = {
     username = "${userConfig.username}";
     homeDirectory =
-      if pkgs.stdenv.isDarwin then "/Users/${userConfig.username}" else "/home/${userConfig.username}";
+      if pkgs.stdenv.hostPlatform.isDarwin then "/Users/${userConfig.username}" else "/home/${userConfig.username}";
 
     sessionPath = [
       "$HOME/bin"
@@ -177,7 +177,7 @@
             gnupg
             gnutar
             gnutls
-            nixfmt-rfc-style
+            nixfmt
             sesh
             stow
             tree
@@ -197,6 +197,6 @@
       ++ packageGroups.flock
       ++ packageGroups.k8s
       ++ packageGroups.languages
-      ++ lib.optionals pkgs.stdenv.isDarwin packageGroups.mac;
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin packageGroups.mac;
   };
 }
