@@ -8,7 +8,19 @@ switch flake: flake-update
 
 # Update all flake inputs. Runs automatically before switch and rebuild.
 flake-update:
+    #!/usr/bin/env bash
+    set -euo pipefail
     nix --extra-experimental-features "nix-command flakes" flake update
+    # Nix adds one packfile per input fetch to its tarball cache and never
+    # repacks. libgit2 opens every pack's .idx to write a new one, so past ~500
+    # packs the fetch dies with "writing packfile: -1 ... Too many open files".
+    shopt -s nullglob
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/nix/tarball-cache"
+    packs=("$cache"/objects/pack/*.pack)
+    if [ "${#packs[@]}" -gt 100 ]; then
+      echo "repacking $cache (${#packs[@]} packfiles)"
+      git -C "$cache" gc --quiet
+    fi
 
 rebuild flake: flake-update
     #!/usr/bin/env bash

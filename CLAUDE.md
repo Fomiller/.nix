@@ -231,6 +231,21 @@ password in.
   `post-build-hook =` line, so nix.conf wins. Killing the hook means editing
   `/etc/nix/nix.conf` directly, which Determinate also overwrites.
 
+- **`flake update` fails with `writing packfile: -1, failed to open directory
+  '~/.cache/nix/tarball-cache/refs/': Too many open files`**: not a `ulimit`
+  problem (the soft limit here is already 1048576). Nix adds one packfile per
+  input fetch to `~/.cache/nix/tarball-cache` and never repacks or gc's it, and
+  that bare repo has zero refs so nothing ever consolidates them. libgit2 opens
+  every existing pack's `.idx` to resolve deltas while writing a new pack, so
+  past roughly 500 packs it runs out of descriptors. Fix is `git -C
+  ~/.cache/nix/tarball-cache gc` (measured 2026-08-18: 542 packs/418M → 1
+  pack/221M in 10s); deleting the whole directory also works, it's a pure
+  cache. The `flake-update` recipe in the `justfile` now repacks automatically
+  once the cache passes 100 packfiles, so this shouldn't recur — one
+  switch/rebuild cycle adds ~45 packs, i.e. roughly a dozen cycles per repack.
+  Because the cache has no refs, `gc` prunes objects older than two weeks;
+  that's fine, Nix re-fetches from the network on a miss.
+
 ## Git
 
 Only commit/push when explicitly asked. When asked, this repo has no
