@@ -67,6 +67,9 @@ in
     # there's no collision to dodge. Upside is new agent files take effect
     # immediately without a switch.
     ".claude/agents".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/agents";
+    # Same reasoning as ./agents: nothing else writes into
+    # .claude/output-styles, so one directory symlink is enough.
+    ".claude/output-styles".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/output-styles";
     # statusline.conf is intentionally not managed here: claude-statusline
     # (context-stats) regenerates it at runtime, so a managed symlink just gets
     # clobbered into a plain file and then blocks the next switch.
