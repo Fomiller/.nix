@@ -63,6 +63,11 @@
       }
     }
   },
+  "permissions": {
+    "additionalDirectories": [
+      "/Users/forrest.miller/dev/worktrees"
+    ]
+  },
   "effortLevel": "medium",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
