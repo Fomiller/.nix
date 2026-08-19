@@ -1,7 +1,7 @@
 { ... }:
 {
   # HolmesGPT k9s integration: Shift-H asks HolmesGPT to investigate the
-  # selected resource. Auth is via AWS Bedrock (feury-devops-engineers SSO
+  # selected resource. Auth is via AWS Bedrock (flock-prod-devops-engineers SSO
   # profile) — model definitions live in the untracked
   # ~/.holmes/model_list.yaml (contains our AWS account ID, kept out of
   # this public repo). AWS_PROFILE is scoped to just this plugin's
@@ -17,7 +17,7 @@
     args = [
       "-c"
       ''
-        export AWS_PROFILE=feury-devops-engineers
+        export AWS_PROFILE=flock-prod-devops-engineers
 
         # Check if we're already using the correct context
         CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || echo "")
@@ -70,7 +70,7 @@
     args = [
       "-c"
       ''
-        export AWS_PROFILE=feury-devops-engineers
+        export AWS_PROFILE=flock-prod-devops-engineers
 
         CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || echo "")
         if [ "$CURRENT_CONTEXT" = "$CONTEXT" ]; then
