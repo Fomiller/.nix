@@ -90,6 +90,9 @@
             baseUrl = null;
             insecure = false;
           };
+          # Grafana MCP server target. baseUrl = null skips registering it on
+          # this host. TODO: set nimbus's Grafana URL.
+          grafana.baseUrl = null;
         };
         "forrest.miller" = {
           email = "forrest.millerj@flocksafety.com";
@@ -101,6 +104,7 @@
             baseUrl = "https://argocd.dingo-halfmoon.ts.net";
             insecure = true;
           };
+          grafana.baseUrl = "https://flocksafety.grafana.net";
         };
       };
 

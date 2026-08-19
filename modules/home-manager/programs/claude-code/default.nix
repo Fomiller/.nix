@@ -31,24 +31,36 @@ in
     # host has no ArgoCD URL set. ARGOCD_API_TOKEN is a literal reference
     # Claude expands at launch from the environment (exported via
     # ~/.config/zsh/secrets.zsh), so no token lands in the repo.
-    mcpServers = lib.optionalAttrs (userConfig.argocd.baseUrl != null) {
-      argocd = {
-        type = "stdio";
-        command = "npx";
-        args = [
-          "-y"
-          "argocd-mcp@latest"
-          "stdio"
-        ];
-        env = {
-          ARGOCD_BASE_URL = userConfig.argocd.baseUrl;
-          ARGOCD_API_TOKEN = "\${ARGOCD_API_TOKEN}";
-        }
-        // lib.optionalAttrs userConfig.argocd.insecure {
-          NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    mcpServers =
+      lib.optionalAttrs (userConfig.argocd.baseUrl != null) {
+        argocd = {
+          type = "stdio";
+          command = "npx";
+          args = [
+            "-y"
+            "argocd-mcp@latest"
+            "stdio"
+          ];
+          env = {
+            ARGOCD_BASE_URL = userConfig.argocd.baseUrl;
+            ARGOCD_API_TOKEN = "\${ARGOCD_API_TOKEN}";
+          }
+          // lib.optionalAttrs userConfig.argocd.insecure {
+            NODE_TLS_REJECT_UNAUTHORIZED = "0";
+          };
+        };
+      }
+      # Grafana's own hosted remote MCP. No local binary and no token: auth is
+      # OAuth against the Grafana instance named in X-Grafana-URL, done once in
+      # the browser via /mcp. Uncheck "Write access" on the authorize screen to
+      # keep it read-only.
+      // lib.optionalAttrs (userConfig.grafana.baseUrl != null) {
+        grafana = {
+          type = "http";
+          url = "https://mcp.grafana.com/mcp";
+          headers."X-Grafana-URL" = userConfig.grafana.baseUrl;
         };
       };
-    };
   };
 
   home.packages = [
@@ -60,7 +72,8 @@ in
   home.file = {
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
     ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";
-    ".claude/keybindings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/keybindings.json";
+    ".claude/keybindings.json".source =
+      config.lib.file.mkOutOfStoreSymlink "${claudeDir}/keybindings.json";
     # Whole-directory symlink here, unlike ./skills which needs one symlink per
     # entry: the module only writes into .claude/agents/ when `agents` or
     # `agentsDir` is set (both unset above), so nothing else claims this path and
