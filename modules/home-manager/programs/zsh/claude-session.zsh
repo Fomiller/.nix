@@ -60,9 +60,18 @@ clc() {
   fi
   # An explicit socket path guarantees the session listens for control
   # messages. That socket is how `claude-rename` retitles a live session.
+  local sock_path
   if [[ " $* " != *" --messaging-socket-path "* ]]; then
+    sock_path="/tmp/cc-socks/clc-$$-$RANDOM.sock"
     mkdir -p /tmp/cc-socks
-    extra+=(--messaging-socket-path "/tmp/cc-socks/clc-$$-$RANDOM.sock")
+    extra+=(--messaging-socket-path "$sock_path")
+  else
+    for (( i = 1; i <= $#; i++ )); do
+      if [[ ${@[i]} == --messaging-socket-path ]]; then
+        sock_path=${@[i+1]}
+        break
+      fi
+    done
   fi
 
   local win_name win_auto
@@ -72,8 +81,17 @@ clc() {
     _claude_tmux_rename "$session_name"
   fi
 
+  # A hand-typed `/rename` never runs claude-rename, and Claude Code has no
+  # rename hook. This polls the session's registry file instead.
+  local watch_pid
+  if [[ -n $TMUX && -n $TMUX_PANE && -n $sock_path ]]; then
+    claude-rename --watch "$sock_path" "$session_name" &!
+    watch_pid=$!
+  fi
+
   command claude --dangerously-skip-permissions "${extra[@]}" "$@"
   local rc=$?
+  [[ -n $watch_pid ]] && kill $watch_pid 2>/dev/null
 
   # rename-window turns automatic-rename off for the window, so put it back
   # the way it was rather than just restoring the old string.

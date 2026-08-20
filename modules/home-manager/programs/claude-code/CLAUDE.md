@@ -196,8 +196,11 @@ instead.
 
 Inside tmux, both `clc` and `claude-rename` set the window name to
 `claude(<session name>)`. `clc` puts the old name (and `automatic-rename`)
-back when the session exits. `/rename` typed by hand does not touch the window
-— only `claude-rename` does.
+back when the session exits. `/rename` typed by hand also updates the window,
+but not instantly — `clc` backgrounds `claude-rename --watch <socket>`, which
+polls the session's registry file (`~/.claude/sessions/<pid>.json`) and mirrors
+a name change into the window title within ~2s. Claude Code has no rename hook,
+and the messaging socket only takes messages in, so polling is the only signal.
 
 `wt switch --create` bases off the repo's detected default branch (see Default
 branch above) and does not fetch, so a stale local trunk means a stale branch

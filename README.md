@@ -75,6 +75,14 @@ just switch flock
 
 See `CLAUDE.md` for a more detailed operational guide and known gotchas.
 
+## Docs
+
+- [`docs/worktree-workflow.md`](docs/worktree-workflow.md) — per-branch git
+  worktrees via worktrunk, and the CLAUDE.md block that drives them
+- [`docs/claude-session-naming.md`](docs/claude-session-naming.md) — how `clc`
+  names a Claude Code session, and how renames get mirrored into the tmux
+  window title
+
 ## Contributing
 
 Contributions are welcome! If you have improvements or suggestions, please open an issue or submit a pull request.
