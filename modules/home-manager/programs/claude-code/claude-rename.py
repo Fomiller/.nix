@@ -11,10 +11,26 @@ Usage: claude-rename <new-name> [pid]   (pid defaults to $CLAUDE_PID)
 import json
 import os
 import socket
+import subprocess
 import sys
 import time
 
 REGISTRY = os.path.expanduser("~/.claude/sessions")
+
+
+def rename_tmux_window(name):
+    """Mirror the session name into the tmux window title as claude(<name>)."""
+    pane = os.environ.get("TMUX_PANE")
+    if not os.environ.get("TMUX") or not pane:
+        return
+    try:
+        subprocess.run(
+            ["tmux", "rename-window", "-t", pane, f"claude({name})"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        pass
 
 
 def die(msg):
@@ -61,6 +77,7 @@ def main():
         try:
             with open(path) as fh:
                 if json.load(fh).get("name") == name:
+                    rename_tmux_window(name)
                     print(f"renamed session {pid} to {name}")
                     return
         except (OSError, ValueError):

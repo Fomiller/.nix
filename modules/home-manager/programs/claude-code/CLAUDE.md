@@ -194,6 +194,11 @@ success. If it says the session has no messaging socket, the session predates
 this setup or wasn't started by `clc` — ask me to type `/rename DO-1234`
 instead.
 
+Inside tmux, both `clc` and `claude-rename` set the window name to
+`claude(<session name>)`. `clc` puts the old name (and `automatic-rename`)
+back when the session exits. `/rename` typed by hand does not touch the window
+— only `claude-rename` does.
+
 `wt switch --create` bases off the repo's detected default branch (see Default
 branch above) and does not fetch, so a stale local trunk means a stale branch
 base. When the branch needs to start from current upstream, do it by hand
