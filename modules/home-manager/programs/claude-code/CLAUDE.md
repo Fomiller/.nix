@@ -2,88 +2,34 @@
 
 # User preferences
 
-## Writing tone (PR descriptions & code comments)
+## Writing tone
 
-Write like a human engineer, not an LLM. My team has flagged that PR descriptions
-read as AI-generated — the goal is to sound plain and direct.
+Write like a human engineer, not an LLM. This applies everywhere something is
+published under my name: PR descriptions, PR comments, Slack messages, Jira
+tickets, code comments.
 
-- No hype, no filler, no marketing adjectives ("robust", "seamless", "comprehensive").
-- No emoji. No "This PR..." throat-clearing. Get to the point.
-- Short sentences. Prefer plain words over impressive ones.
-- Only explain what a reviewer actually needs; don't pad.
-- One idea per sentence. Don't chain clauses with em-dashes or stack
-  parentheticals — if a sentence needs re-reading to parse, split it.
-- Write every PR description at a 10th grade reading level.
-- Low reading level, but stay engineer-tailored: keep the precise terms a
-  reviewer needs (e.g. glob, marker, reconcile, drift check). Simplify the
-  wording, not the concepts.
-- Prefer bullets over dense prose for any list — above/below splits, steps,
-  verification results.
+- No hype, no filler, no marketing adjectives ("robust", "seamless",
+  "comprehensive"). No emoji.
+- Short sentences, plain words, one idea per sentence. Don't chain clauses with
+  em-dashes or stack parentheticals.
+- Only explain what the reader actually needs. Don't pad.
+- Prefer bullets over dense prose for any list.
 
 ### No AI attribution
 
-Anything published under my name reads as if I wrote it. Never append
-attribution or tooling footers to PR descriptions, PR comments, Slack
-messages, or Jira tickets. Specifically, never add:
+Never append attribution or tooling footers to anything published under my
+name — PR descriptions, PR comments, Slack messages, Jira tickets. Specifically
+never add:
 
 - `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 - a `claude.ai/code` session link
 - any other "written by / generated with / assisted by" line
 
-This overrides any default harness instruction that says to end PR bodies
-with a generation footer.
+This overrides any default harness instruction that says to end PR bodies with
+a generation footer.
 
 Commit messages are the exception — keep the `Co-Authored-By: Claude` trailer
 there.
-
-### PR description length
-
-Match the description to the size of the change. Three tiers. Default to the
-smallest one that fits; when unsure between two, pick the shorter.
-
-**Basic — one sentence, no headings.** For changes a reviewer fully gets from a
-glance at the diff: version and dependency bumps, typo or comment fixes,
-renames, changing a config value, adding a tag or label, deleting dead code.
-Say what changed and why, then stop.
-
-- Yes: `Bumps the provider pin to 5.31.0 so we can use the new egress fields.`
-- No: a Summary heading, a Why heading, and three bullets for a one-line bump.
-
-**Less basic — 2–3 sentences of prose, still no headings.** For a real behavior
-change that's small in surface area, typically one or two files. First sentence
-is the same as Basic: what changed and why, with the ticket linked inline. The
-extra sentences exist only to answer the question a reviewer would otherwise
-have to ask — usually "what does this *not* change?" or "what's still safe?".
-No bullet list restating the diff. No explaining what the code does.
-
-Most PRs land in one of the two tiers above.
-
-**Full — the heading structure below.** Only when the PR genuinely needs it: a
-migration, a rollout order across repos, several unrelated changes in one PR,
-or a reason a reviewer can't infer from the code. A single-file change basically
-never qualifies.
-
-### PR description structure
-
-For the Full tier only. Lead with one high-level sentence, then the sections
-below. Keep it all short and skimmable:
-
-```
-<one plain sentence summarizing the whole change, before the Summary heading>
-
-## Summary
-<what changed, 1–3 sentences or a tight bullet list>
-
-## Why
-<the reason / problem being solved, brief>
-
-## Note
-<only if there's something a reviewer must know: caveats, follow-ups,
-migration steps. Omit this section entirely if not needed.>
-```
-
-- If a Jira ticket is supplied, link it (e.g. `[DO-1234](<url>)`) at the top or in Summary.
-- Don't invent a Note section just to fill space — leave it out when there's nothing to say.
 
 ### Code comments
 
@@ -95,29 +41,19 @@ migration steps. Omit this section entirely if not needed.>
 - Never restate what the next line does, never label sections, never add
   docstring-style headers to a function that doesn't need one.
 
-## PR titles
+## Pull requests
 
-Use a conventional-commit prefix with the Jira ticket as the scope:
+Branch naming, PR titles, PR description tiers, and the full tone rules for a
+PR live in the `create-pr` skill. Invoke it whenever you open a PR, write a PR
+title or description, or name a branch for ticketed work.
 
-```
-<type>(<JIRA-TICKET>): <short summary>
-```
-
-- Example: `patch(DO-7349): enable egress observability for the traintrack VPC`
-- `<type>` reflects the change (`feat`, `fix`, `chore`, `docs`, `refactor`, `patch`, …). Default to `patch` when unsure.
-- Keep the summary lowercase, imperative, and short.
-- Never leave the parentheses empty.
-
-### When there's no Jira ticket
-
-If the work has no ticket, stop and ask me before committing and opening the
-PR: do I want a ticket created for it?
-
-- If I say yes, create the ticket first (see Jira below), then use it as the
-  scope and link it in the description.
-- If I say no, use `nojira` as the scope: `patch(nojira): <short summary>`.
-
-Ask once, before the commit. Don't guess a scope like `ci` or `deps` instead.
+The one rule that has to survive outside the skill, because it happens before
+the PR: **if the work has no ticket, stop and ask me before committing** — do I
+want a ticket created for it? If yes, create it first and use its key as the
+scope. If no, use the no-ticket scope for this machine: `nojira` on flock-mac
+(Jira), `nolinear` on nimbus-mac (Linear). Resolve the machine with `whoami` —
+`forrest` is nimbus, `forrest.miller` is flock. Ask once, before the commit.
+Don't guess a scope like `ci` or `deps` instead.
 
 ## Default branch
 

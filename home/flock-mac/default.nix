@@ -7,10 +7,6 @@
 {
   imports = [
     "${nhModules}/common"
-    # Work-specific Claude Code config (skills, settings, keybindings,
-    # statusline). Shared CLAUDE.md is handled by the claude-code module in
-    # common; this is the flock-only extra.
-    "${nhModules}/programs/claude-code/flock.nix"
     # Work (AWS Bedrock) HolmesGPT wiring.
     "${nhModules}/programs/k9s/flock.nix"
     "${nhModules}/programs/zsh/flock.nix"
