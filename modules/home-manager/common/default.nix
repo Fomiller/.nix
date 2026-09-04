@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  inputs,
   userConfig,
   outputs,
   hostname,
@@ -95,6 +96,7 @@
             context-stats
             rtk
             github-mcp-server
+            inputs.sofka.packages.${pkgs.system}.default
           ];
 
           devTools = with pkgs; [

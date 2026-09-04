@@ -31,6 +31,8 @@
     # replacing our own hand-rolled nix.enable = false + environment.etc.
     determinate.url = "https://flakehub.com/f/DeterminateSystems/determinate/3";
 
+    sofka.url = "github:nklmilojevic/sofka";
+
     # _1password-shell-plugins.url = "github:1Password/shell-plugins";
 
     # nix-homebrew.url = "github:zhaofengli/nix-homebrew";
