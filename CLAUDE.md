@@ -152,6 +152,17 @@ password in.
   revision) — pull it from `pkgs.stable.<name>` instead (the
   `stable-packages` overlay) rather than pinning the whole `nixpkgs` input
   back. `grafana` is set up this way already as a precedent.
+- **`HTTP error 401` on `https://attic.fomiller.com/main/nix-cache-info`**
+  during `just switch`/`just rebuild`: `/nix/var/determinate/netrc` has no (or
+  a stale) entry for `attic.fomiller.com`. That file lives outside the flake
+  in `/nix/var`, so a machine OS reset/reinstall can wipe it even though the
+  attic token itself (in Doppler, project `attic` config `dev`, secret
+  `ATTIC_TOKEN_MACS`) is still valid. Fix is `just attic-login` — it pulls the
+  token from Doppler, verifies it against the cache, and writes the netrc
+  entry. Don't hand-edit `/nix/var/determinate/netrc` or reuse the token from
+  `~/.config/attic/config.toml` — that config is for the `attic` CLI (push), a
+  separate auth path from what the Nix daemon reads via `netrc-file` in
+  `/etc/nix/nix.conf`.
 - **Homebrew casks**: only use the native nix-darwin `homebrew` block for
   packages with no nixpkgs equivalent (currently `kegworks`, a WINE wrapper,
   and `redis-stack-server`, which bundles unpackaged modules/CLI). Prefer a
