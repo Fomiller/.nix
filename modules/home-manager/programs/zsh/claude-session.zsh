@@ -63,7 +63,8 @@ clc() {
   local sock_path
   if [[ " $* " != *" --messaging-socket-path "* ]]; then
     sock_path="/tmp/cc-socks/clc-$$-$RANDOM.sock"
-    mkdir -p /tmp/cc-socks
+    mkdir -p -m 700 /tmp/cc-socks
+    chmod 700 /tmp/cc-socks
     extra+=(--messaging-socket-path "$sock_path")
   else
     for (( i = 1; i <= $#; i++ )); do
