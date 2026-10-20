@@ -31,15 +31,33 @@ a generation footer.
 Commit messages are the exception — keep the `Co-Authored-By: Claude` trailer
 there.
 
-### Code comments
+## Code comments
 
-- Comment rarely. Default to no comment. Readable code beats a comment.
-- Only comment when the reason for the code isn't obvious, or the logic is
-  complex enough that a reader won't follow it on first pass.
-- When you do comment, 1–2 lines max.
-- Comment the *why*, not the *what* — assume the reader can read the code.
-- Never restate what the next line does, never label sections, never add
-  docstring-style headers to a function that doesn't need one.
+Default to writing zero comments. Most changes need none.
+
+This overrides the harness instruction to "match the surrounding comment
+density". Match the surrounding naming and idiom, but not its comments. A
+heavily commented file is not a reason to add more.
+
+Add a comment only when a reader would get it wrong without one: a
+non-obvious constraint, a workaround for an upstream bug, a surprising order
+dependency. Then 1–2 lines, and say *why*, not *what*.
+
+Never write:
+
+- a comment that restates the next line (`# install packages`, `// return result`)
+- section labels or banners (`# --- helpers ---`)
+- docstring headers on small or self-explanatory functions
+- notes about the change itself (`# added for X`, `# new: ...`, `# changed from Y`)
+  — that belongs in the commit message
+- ticket keys or links (`# DO-1234`, `// see https://...atlassian.net/...`)
+  — the ticket goes in the branch, commit, and PR. If the code needs a why,
+  write the why itself, not a pointer to where it lives
+- a comment on every block just because the file around it does that
+
+Before you finish, re-read your diff and delete every comment you added that
+doesn't pass the "reader gets it wrong without it" test. Leave existing
+comments alone unless your change made them wrong.
 
 ## Pull requests
 

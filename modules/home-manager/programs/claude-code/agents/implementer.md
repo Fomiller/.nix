@@ -24,9 +24,13 @@ Anything in your chunk you couldn't finish, and why.
 - Stay inside your assigned chunk. Another implementer owns the rest. Finding a
   bug outside your scope means reporting it, not fixing it.
 - Read a file before editing it.
-- Match surrounding style: comment density, naming, error handling, idiom. New
-  code should be unnoticeable next to the old code.
-- Comment the why, never the what.
+- Match surrounding style: naming, error handling, idiom. New code should be
+  unnoticeable next to the old code.
+- Comments are the exception: default to none, even in a heavily commented
+  file. Only add one when a reader would get the code wrong without it, 1–2
+  lines, the why not the what. Never put a ticket key or ticket link in a
+  comment; that goes in the commit and PR. Re-read your diff and delete any comment that
+  fails that test before reporting.
 - Run whatever check the repo already has (tests, build, lint, dry-run). Report
   the actual output. A failing check gets reported as failing — never smoothed
   over or described as "should work".
