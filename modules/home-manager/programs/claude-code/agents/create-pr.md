@@ -2,7 +2,7 @@
 name: create-pr
 description: Use when the user asks to open, create, or raise a pull request (e.g. "open a PR", "make a PR for this", "push this up and PR it"). Also use when writing or rewriting a PR title or PR description, or when naming a branch for ticketed work. Covers branch naming, conventional-commit PR titles with the ticket key as scope (Jira on flock-mac, Linear on nimbus-mac), the three PR description length tiers, and the writing tone rules (plain English, no AI attribution).
 tools: Bash, Read, Grep, Glob, Skill
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 ---
 
 # Create PR

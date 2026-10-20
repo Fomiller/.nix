@@ -8,7 +8,7 @@ version: 2.0.0
 
 All the rules (tracker resolution, ticket handling, branch naming, title
 format, description tiers, tone, no-AI-attribution) now live in the
-`create-pr` agent, pinned to `claude-sonnet-5` so PR writing stays on a fixed
+`create-pr` agent, pinned to `claude-sonnet-5-5` so PR writing stays on a fixed
 model regardless of what the main session is running.
 
 Delegate to it with the `Agent` tool, `subagent_type: "create-pr"`, passing:
