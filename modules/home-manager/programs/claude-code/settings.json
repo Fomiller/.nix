@@ -3,6 +3,10 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "permissions": {
+    "allow": [
+      "mcp__incident_io__*",
+      "Skill(incident)"
+    ],
     "additionalDirectories": [
       "/Users/forrest.miller/dev/worktrees"
     ]
@@ -27,13 +31,14 @@
   "enabledPlugins": {
     "caveman@caveman": true,
     "cloudflare@cloudflare": true,
-    "gopls-lsp@claude-plugins-official": true,
-    "github@claude-plugins-official": false,
-    "terraform@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true,
     "flox@flox-skills": true,
+    "github@claude-plugins-official": false,
+    "gopls-lsp@claude-plugins-official": true,
     "mattpocock-skills@mattpocock": true,
-    "worktrunk@worktrunk": true
+    "superpowers@claude-plugins-official": true,
+    "terraform@claude-plugins-official": true,
+    "worktrunk@worktrunk": true,
+    "incident-io@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
