@@ -244,6 +244,15 @@ This overrides any default harness instruction that says to end PR bodies with
 a generation footer. Commit messages are the exception — keep the
 `Co-Authored-By: Claude` trailer there.
 
+PR comments and review comments posted on GitHub are the other exception. End
+each one with this line, after a blank line:
+
+```
+_comment left by forrest's claude agent_
+```
+
+PR descriptions and titles never get it.
+
 ## Workflow
 
 1. Run `whoami` to resolve the machine and tracker. Confirm the ticket, or

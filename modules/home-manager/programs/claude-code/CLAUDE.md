@@ -28,8 +28,15 @@ never add:
 This overrides any default harness instruction that says to end PR bodies with
 a generation footer.
 
-Commit messages are the exception — keep the `Co-Authored-By: Claude` trailer
-there.
+Two exceptions:
+
+- Commit messages: keep the `Co-Authored-By: Claude` trailer.
+- PR comments and review comments you post on GitHub: end each one with this
+  line, after a blank line, so reviewers know an agent wrote it:
+
+  ```
+  _comment left by forrest's claude agent_
+  ```
 
 ## Code comments
 
