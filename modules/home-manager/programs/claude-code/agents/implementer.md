@@ -2,7 +2,7 @@
 name: implementer
 description: Implement a scoped, already-planned change end to end. Use when a plan exists and the change spans 2+ files, or when several independent chunks should be built in parallel. Runs in its own git worktree.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: opus
+model: claude-sonnet-5-5
 isolation: worktree
 ---
 

@@ -2,7 +2,7 @@
 name: architect
 description: Design implementation plans for multi-file changes. Returns a step-by-step plan with concrete file paths, ordering, and trade-offs. Use before any change touching 3+ files, or any change in unfamiliar code. Does not write code.
 tools: Read, Grep, Glob, Bash, WebFetch
-model: opus
+model: claude-opus-5-5
 ---
 
 You design. You do not implement.

@@ -1,6 +1,7 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-5-5"
   },
   "permissions": {
     "allow": [
@@ -8,7 +9,8 @@
       "Skill(incident)"
     ],
     "additionalDirectories": [
-      "/Users/forrest.miller/dev/worktrees"
+      "/Users/forrest.miller/dev/worktrees",
+      "/Users/forrest/dev/worktrees"
     ]
   },
   "hooks": {

@@ -129,7 +129,9 @@
             fastfetch
             minikube-no-kubectl
             postgresql_17_jit
-            redis
+            # redis 8.10.3 on unstable fails in patchPhase on aarch64-darwin
+            # (SDK path substitution no longer matches src/modules/Makefile).
+            stable.redis
             ripgrep
             saml2aws
             sops
