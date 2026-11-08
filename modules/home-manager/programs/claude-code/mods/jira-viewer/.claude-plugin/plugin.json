@@ -1,0 +1,7 @@
+{
+  "name": "jira-viewer",
+  "version": "0.1.0",
+  "description": "A /jira pane to browse your Jira tickets by state, read descriptions and comments, change status, comment and get toasts on updates.",
+  "author": { "name": "Forrest Miller" },
+  "license": "MIT"
+}

@@ -181,6 +181,10 @@ test('vim keys move the cursor, open the conversation and merge after a confirm'
 test('an approval found in the background toasts and offers merge above the prompt', async ($, on) => {
   let review = 'REVIEW_REQUIRED'
   const { ran, toasts } = engine(on, () => listJson({ reviewDecision: review }))
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>another band</Text>
+  })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.command.run(refreshArgs)
   expect(toasts.length).toBe(0)
@@ -191,6 +195,7 @@ test('an approval found in the background toasts and offers merge above the prom
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await band.find({ type: 'Text', text: /Approved/ })).toBeTruthy()
+  expect(await band.find({ type: 'Text', text: /another band/ })).toBeTruthy()
   ran.length = 0
   await band.press({ key: 'band-merge' })
   await band.press({ key: 'band-merge' })
