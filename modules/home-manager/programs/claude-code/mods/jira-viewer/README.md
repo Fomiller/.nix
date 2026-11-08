@@ -4,7 +4,11 @@ A Claude Code mod that adds a `/jira` pane for your Jira tickets. It works like 
 
 ## Setup
 
-Create an API token at **id.atlassian.com → Security → API tokens**. Export these before starting Claude Code, for example in `~/.config/zsh/secrets.zsh`:
+The viewer uses your **Atlassian connector** when one is connected, so no key is needed. Connect it with `/mcp`, or in claude.ai under Settings → Connectors. The status line says `via connector` or `via api key`.
+
+Background checks run without you there, so they never show a permission prompt. Until the connector's read tools are allowed, the pane says background checks are paused and lists the tools. Press `x` there to ask Claude to add them to `permissions.allow`. Actions you take yourself, like changing a status or posting a comment, go through your normal permission mode.
+
+If no connector is found, the viewer falls back to an API key. Create an API token at **id.atlassian.com → Security → API tokens**, then export these before starting Claude Code, for example in `~/.config/zsh/secrets.zsh`:
 
 ```sh
 export JIRA_BASE_URL=https://your-site.atlassian.net
@@ -12,9 +16,11 @@ export JIRA_EMAIL=you@example.com
 export JIRA_API_TOKEN=...
 ```
 
-The sprint comes from `customfield_10020`, the usual sprint field on Jira Cloud. If your site uses another field, change `SPRINT_FIELD` in `hooks/source.ts`.
+If the connector reaches more than one Atlassian site, set `JIRA_BASE_URL` alone to pick the site.
 
-The pane shows these steps itself until the variables are set.
+The pane shows these steps until one of the two works.
+
+The sprint comes from `customfield_10020`, the usual sprint field on Jira Cloud. If your site uses another field, change `SPRINT_FIELD` in `hooks/source.ts`.
 
 ## Commands
 
@@ -87,7 +93,7 @@ The first check after you install only records where things stand.
 
 ## Code layout
 
-`hooks/core.tsx` is shared with the other tracker mod. Edit `../_tracker-core/core.tsx` and run `just sync-mods`; don't edit the copy here. `hooks/source.ts` is the Jira API adapter.
+`hooks/core.tsx` is shared with the other tracker mod. Edit `../_tracker-core/core.tsx` and run `just sync-mods`; don't edit the copy here. `hooks/source.ts` is the Jira adapter: the connector first, the API key second.
 
 ## Development
 

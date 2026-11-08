@@ -12,6 +12,10 @@ import {
   assignToMe as srcAssignToMe,
   isRemoteQuery as srcIsRemoteQuery,
   meta,
+  backend as srcBackend,
+  blockedTools as srcBlockedTools,
+  setBackground as srcSetBackground,
+  readTools,
 } from './source'
 
 export type StatusType = 'triage' | 'backlog' | 'unstarted' | 'started' | 'review' | 'done' | 'canceled'
@@ -62,7 +66,7 @@ type GroupBy = 'project' | 'status' | 'sprint' | 'parent' | 'none'
 type Prompting = 'comment' | 'status' | 'search' | null
 type EventKind = 'assigned' | 'status' | 'comment'
 type TicketEvent = { id: string; key: string; kind: EventKind; text: string; at: number }
-type Snapshot = Record<string, { status: string; isAssignedToMe: boolean; lastCommentAt: string | null }>
+type Snapshot = Record<string, { status: string; isAssignedToMe: boolean; lastCommentAt: string | null; updatedAt?: string }>
 type Row = { kind: 'group'; name: string; count: number } | { kind: 'ticket'; t: Ticket }
 
 const isOpen = (t: Ticket) => t.statusType !== 'done' && t.statusType !== 'canceled'
@@ -181,6 +185,11 @@ function bodyOf(body: string, lines: number): { text: string; isCut: boolean } {
 export function cleanMarkdown(md: string): string {
   return md
     .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[a-z]+\b([^>]*)\/>/gi, (tag: string, attrs: string) => {
+      const label = /label="([^"]*)"/.exec(attrs)?.[1]
+      const href = /href="([^"]*)"/.exec(attrs)?.[1]
+      return label && href ? `[${label}](${href})` : label ?? tag
+    })
     .replace(/<summary>([\s\S]*?)<\/summary>/gi, '**$1**')
     .replace(/<\/?details[^>]*>/gi, '')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt: string, src: string) => `[${alt || 'image'}](${src})`)
@@ -217,6 +226,7 @@ const S = {
   transitions: null as { key: string; list: Transition[] } | null,
   setupError: null as string | null,
   pollMinutes: 5,
+  backend: null as string | null,
 }
 const details = new Map<string, TicketDetail>()
 const ownChanges = new Map<string, number>()
@@ -298,7 +308,37 @@ function changesOf(before: Snapshot, list: Ticket[], me: string): Omit<TicketEve
   return out
 }
 
+async function fillComments($: EngineInterface, list: Ticket[], before: Snapshot | undefined) {
+  for (const t of list) {
+    const was = before?.[t.key]
+    if (t.lastCommentAt === null && was && was.updatedAt === t.updatedAt) {
+      t.lastCommentAt = was.lastCommentAt
+      t.lastCommenter = null
+    }
+  }
+  const changed = list.filter(t => t.lastCommentAt === null && isOpen(t) && (!before?.[t.key] || before[t.key]!.updatedAt !== t.updatedAt))
+  for (const t of changed.slice(0, 8)) {
+    try {
+      const d = await srcDetail($, t)
+      details.set(t.key, d)
+      const last = [...d.comments].sort((a, b) => b.at.localeCompare(a.at))[0]
+      t.lastCommentAt = last?.at ?? null
+      t.lastCommenter = last?.author ?? null
+    } catch {}
+  }
+}
+
 async function refresh($: EngineInterface, quiet = false): Promise<string | null> {
+  srcSetBackground(quiet)
+  try {
+    return await refreshNow($, quiet)
+  } finally {
+    srcSetBackground(false)
+    redraw($)
+  }
+}
+
+async function refreshNow($: EngineInterface, quiet: boolean): Promise<string | null> {
   const setup = await srcCheck($)
   if (setup) {
     set($, { setupError: setup })
@@ -307,10 +347,12 @@ async function refresh($: EngineInterface, quiet = false): Promise<string | null
   if (!quiet) set($, { isLoading: true, setupError: null })
   try {
     const [list, me] = await Promise.all([srcList($), srcMe($)])
+    S.backend = await srcBackend($)
     const before = (await $.store.get('snapshot')) as Snapshot | undefined
+    await fillComments($, list, before)
     if (before) await pushEvents($, changesOf(before, list, me))
     const snap: Snapshot = {}
-    for (const t of list) snap[t.key] = { status: t.status, isAssignedToMe: t.isAssignedToMe, lastCommentAt: t.lastCommentAt }
+    for (const t of list) snap[t.key] = { status: t.status, isAssignedToMe: t.isAssignedToMe, lastCommentAt: t.lastCommentAt, updatedAt: t.updatedAt }
     await $.store.set('snapshot', snap)
     S.tickets = list
     S.fetchedAt = Date.now()
@@ -521,10 +563,8 @@ export function registerTracker(on: On): void {
       if (typeof groupBy === 'string' && GROUP_BYS.includes(groupBy as GroupBy)) S.groupBy = groupBy as GroupBy
       const minutes = await $.store.get('pollMinutes')
       if (typeof minutes === 'number') S.pollMinutes = minutes
-      if (!(await srcCheck($))) {
-        startPolling($)
-        $.clock.after(8_000, () => void refresh($, true))
-      }
+      startPolling($)
+      $.clock.after(8_000, () => void refresh($, true))
       return next(e)
     })
 
@@ -573,6 +613,14 @@ export function registerTracker(on: On): void {
         ),
       }
     }).catch(($, e, next) => (next.called ? next(e) : { deny: `${source.name} search failed.` }))
+
+    on('tool.check', async ($, e, next) => {
+      const isOwnRead =
+        next.origin.plugin === source.pane &&
+        e.tool.startsWith('mcp__') &&
+        readTools.some(r => e.tool.endsWith(`__${r}`))
+      return isOwnRead ? { decision: 'allow', reason: `${source.name} viewer read` } : next(e)
+    })
 
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
       const top = S.events[0]
@@ -626,6 +674,8 @@ export function registerTracker(on: On): void {
             <Text dimColor>
               {S.fetchedAt ? `updated ${ago(new Date(S.fetchedAt).toISOString(), now)} ago` : 'not loaded'}
               {S.pollMinutes > 0 ? ` · checks every ${S.pollMinutes}m` : ' · background checks off'}
+              {S.backend ? ` · via ${S.backend}` : ''}
+              {srcBlockedTools().length > 0 ? ' · background checks paused' : ''}
             </Text>
           )}
           {(S.filter || (S.view === 'search' && S.searchQuery)) && (
@@ -919,6 +969,19 @@ export function registerTracker(on: On): void {
             {tabs}
           </Box>
           {statusLine}
+          {srcBlockedTools().length > 0 && (
+            <Box flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1}>
+              <Text color="warning">Background checks are paused. These reads need to be allowed so they can run without a prompt:</Text>
+              {srcBlockedTools().map(t => (
+                <Text dimColor>{`  ${t}`}</Text>
+              ))}
+              <Button key="allow-reads" hotkey="x" label="ask Claude to allow them" onPress={() =>
+                void $.prompt.submit({
+                  text: `Add these tools to permissions.allow in ~/.claude/settings.json so the ${source.name} viewer mod can check tickets in the background without a prompt. They are read-only connector tools: ${srcBlockedTools().join(', ')}`,
+                })
+              } />
+            </Box>
+          )}
           {rule(els, width)}
           {isWide ? (
             <Box flexDirection="row" columnGap={1}>

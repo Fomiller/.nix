@@ -65,6 +65,7 @@ function engine(on: On, env: Record<string, string>, issues: () => unknown[]) {
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('tool.list', () => ({ value: [] }))
   on('http.fetch', (_, e) => {
     const body = e.init?.body ? JSON.parse(e.init.body) : undefined
     reqs.push({ url: e.url, method: e.init?.method ?? 'GET', body, auth: e.init?.headers?.authorization ?? '' })

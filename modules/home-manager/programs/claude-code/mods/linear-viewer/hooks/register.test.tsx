@@ -59,6 +59,7 @@ function engine(on: On, env: Record<string, string>, nodes: () => unknown[]) {
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('tool.list', () => ({ value: [] }))
   on('http.fetch', (_, e) => {
     const call = JSON.parse(e.init?.body ?? '{}') as Call
     calls.push(call)

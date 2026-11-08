@@ -47,6 +47,107 @@ type Issue = {
 }
 
 let meCache: { accountId: string; displayName: string } | null = null
+let mcpTools: string[] = []
+let mcpSite: { cloudId: string; base: string } | null = null
+let mcpMe: { accountId: string; displayName: string } | null = null
+
+export const readTools = [
+  'searchJiraIssuesUsingJql',
+  'getJiraIssue',
+  'getTransitionsForJiraIssue',
+  'getAccessibleAtlassianResources',
+  'atlassianUserInfo',
+]
+
+let background = false
+const blocked = new Set<string>()
+
+export function setBackground(on: boolean): void {
+  background = on
+}
+
+export function blockedTools(): string[] {
+  return [...blocked].sort()
+}
+
+async function mcpTool($: EngineInterface, suffix: string): Promise<string | null> {
+  const hit = (names: string[]) =>
+    names.find(n => n.startsWith('mcp__') && !n.startsWith('mcp__jira-viewer__') && n.endsWith(`__${suffix}`)) ?? null
+  const cached = hit(mcpTools)
+  if (cached) return cached
+  mcpTools = (await $.tool.list()).map(t => t.name)
+  return hit(mcpTools)
+}
+
+function firstLineOf(text: string): string {
+  return text.trim().split('\n')[0]?.slice(0, 200) ?? ''
+}
+
+async function mcp<T>($: EngineInterface, suffix: string, args: Record<string, unknown>): Promise<T> {
+  const tool = await mcpTool($, suffix)
+  if (!tool) throw new Error(`no Atlassian connector tool ${suffix}`)
+  if (background) {
+    const verdict = await $.tool.check({ tool, input: args })
+    if (verdict.decision !== 'allow') {
+      blocked.add(tool)
+      throw new Error(`background checks need permission for ${tool}`)
+    }
+    blocked.delete(tool)
+  }
+  const out = (await $.tool.call({ tool, ...args } as never)) as { deny?: string; text?: string; isError?: boolean }
+  if (out.deny) throw new Error(out.deny)
+  if (out.isError) throw new Error(firstLineOf(out.text ?? `${suffix} failed`))
+  try {
+    return JSON.parse(out.text ?? 'null') as T
+  } catch {
+    throw new Error(`${suffix} returned something other than JSON: ${firstLineOf(out.text ?? '')}`)
+  }
+}
+
+export async function backend($: EngineInterface): Promise<'connector' | 'api key' | null> {
+  if (await mcpTool($, 'searchJiraIssuesUsingJql')) return 'connector'
+  if (await config($)) return 'api key'
+  return null
+}
+
+async function useMcp($: EngineInterface): Promise<boolean> {
+  return (await backend($)) === 'connector'
+}
+
+async function site($: EngineInterface): Promise<{ cloudId: string; base: string }> {
+  if (mcpSite) return mcpSite
+  const raw = await mcp<unknown>($, 'getAccessibleAtlassianResources', {})
+  const list = (Array.isArray(raw) ? raw : ((raw as { resources?: unknown[] })?.resources ?? [])) as { id: string; url: string; name?: string; scopes?: string[] }[]
+  const want = (await $.env.get('JIRA_BASE_URL'))?.trim().replace(/\/+$/, '')
+  const pick =
+    list.find(r => want && r.url.replace(/\/+$/, '') === want) ??
+    list.find(r => (r.scopes ?? []).some(sc => sc.includes('jira'))) ??
+    list[0]
+  if (!pick) throw new Error('The Atlassian connector has no accessible site')
+  mcpSite = { cloudId: pick.id, base: pick.url.replace(/\/+$/, '') }
+  return mcpSite
+}
+
+async function mcpMyself($: EngineInterface) {
+  if (!mcpMe) {
+    const u = await mcp<{ account_id?: string; accountId?: string; name?: string; displayName?: string }>($, 'atlassianUserInfo', {})
+    mcpMe = { accountId: u.account_id ?? u.accountId ?? '', displayName: u.name ?? u.displayName ?? '' }
+  }
+  return mcpMe
+}
+
+function issuesOf(raw: unknown): Issue[] {
+  const r = raw as { issues?: Issue[]; data?: { issues?: Issue[] } } | Issue[]
+  if (Array.isArray(r)) return r
+  return r?.issues ?? r?.data?.issues ?? []
+}
+
+async function mcpSearch($: EngineInterface, jql: string, max: number): Promise<Ticket[]> {
+  const { cloudId, base } = await site($)
+  const me = await mcpMyself($)
+  const raw = await mcp<unknown>($, 'searchJiraIssuesUsingJql', { cloudId, jql, fields: FIELDS, maxResults: max })
+  return issuesOf(raw).filter(i => i?.key && i.fields).map(i => toTicket(i, base, me.accountId))
+}
 
 async function config($: EngineInterface): Promise<Config | null> {
   const base = (await $.env.get('JIRA_BASE_URL'))?.trim().replace(/\/+$/, '')
@@ -202,8 +303,8 @@ export const meta: Meta = {
   command: 'jira',
   pane: 'jira-viewer',
   setupHelp: [
-    'Create an API token at **id.atlassian.com → Security → API tokens**.',
-    'Then export these before starting Claude Code, for example in `~/.config/zsh/secrets.zsh`:',
+    'The viewer uses your **Atlassian connector** when one is connected. Connect it with `/mcp`, or in claude.ai under Settings → Connectors. If you have more than one site, set `JIRA_BASE_URL` to pick one.',
+    'If you would rather use an API token, create one at **id.atlassian.com → Security → API tokens**, then export these before starting Claude Code, for example in `~/.config/zsh/secrets.zsh`:',
     '```sh\nexport JIRA_BASE_URL=https://your-site.atlassian.net\nexport JIRA_EMAIL=you@example.com\nexport JIRA_API_TOKEN=...\n```',
     'Restart Claude Code and press `r`.',
   ].join('\n\n'),
@@ -216,23 +317,20 @@ export function isRemoteQuery(text: string): boolean {
   return QUALIFIER.test(text) || JQL_LIKE.test(text)
 }
 
-export async function check($: EngineInterface): Promise<string | null> {
-  return (await config($)) ? null : 'Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN.'
-}
 
-export async function me($: EngineInterface): Promise<string> {
+async function keyMe($: EngineInterface): Promise<string> {
   return (await myself($)).displayName
 }
 
-export function list($: EngineInterface): Promise<Ticket[]> {
+function keyList($: EngineInterface): Promise<Ticket[]> {
   return searchJql($, LIST_JQL, 100)
 }
 
-export function search($: EngineInterface, query: string): Promise<Ticket[]> {
+function keySearch($: EngineInterface, query: string): Promise<Ticket[]> {
   return searchJql($, jqlOf(query), 50)
 }
 
-export async function detail($: EngineInterface, t: Ticket): Promise<TicketDetail> {
+async function keyDetail($: EngineInterface, t: Ticket): Promise<TicketDetail> {
   const d = await api<{ fields: { description: unknown; comment?: { comments: { author: User; created: string; body: unknown }[] } } }>(
     $,
     `/rest/api/3/issue/${encodeURIComponent(t.key)}?fields=description,comment`,
@@ -247,7 +345,7 @@ export async function detail($: EngineInterface, t: Ticket): Promise<TicketDetai
   }
 }
 
-export async function transitions($: EngineInterface, t: Ticket): Promise<Transition[]> {
+async function keyTransitions($: EngineInterface, t: Ticket): Promise<Transition[]> {
   const d = await api<{ transitions: { id: string; name: string; to: { name: string; statusCategory: { key: string } } }[] }>(
     $,
     `/rest/api/3/issue/${encodeURIComponent(t.key)}/transitions`,
@@ -255,15 +353,76 @@ export async function transitions($: EngineInterface, t: Ticket): Promise<Transi
   return d.transitions.map(tr => ({ id: tr.id, name: tr.to.name, type: statusTypeOf(tr.to.statusCategory.key, tr.to.name) }))
 }
 
-export async function transition($: EngineInterface, t: Ticket, to: Transition): Promise<void> {
+async function keyTransition($: EngineInterface, t: Ticket, to: Transition): Promise<void> {
   await api($, `/rest/api/3/issue/${encodeURIComponent(t.key)}/transitions`, { method: 'POST', body: { transition: { id: to.id } } })
 }
 
-export async function comment($: EngineInterface, t: Ticket, body: string): Promise<void> {
+async function keyComment($: EngineInterface, t: Ticket, body: string): Promise<void> {
   await api($, `/rest/api/3/issue/${encodeURIComponent(t.key)}/comment`, { method: 'POST', body: { body: markdownToAdf(body) } })
 }
 
-export async function assignToMe($: EngineInterface, t: Ticket): Promise<void> {
+async function keyAssignToMe($: EngineInterface, t: Ticket): Promise<void> {
   const self = await myself($)
   await api($, `/rest/api/3/issue/${encodeURIComponent(t.key)}/assignee`, { method: 'PUT', body: { accountId: self.accountId } })
+}
+
+export async function check($: EngineInterface): Promise<string | null> {
+  return (await backend($)) ? null : 'No Atlassian connector found, and JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN are not all set.'
+}
+
+export async function me($: EngineInterface): Promise<string> {
+  return (await useMcp($)) ? (await mcpMyself($)).displayName : keyMe($)
+}
+
+export async function list($: EngineInterface): Promise<Ticket[]> {
+  return (await useMcp($)) ? mcpSearch($, LIST_JQL, 100) : keyList($)
+}
+
+export async function search($: EngineInterface, query: string): Promise<Ticket[]> {
+  return (await useMcp($)) ? mcpSearch($, jqlOf(query), 50) : keySearch($, query)
+}
+
+type Comments = { comments?: { author: User; created: string; body: unknown }[] }
+
+export async function detail($: EngineInterface, t: Ticket): Promise<TicketDetail> {
+  if (!(await useMcp($))) return keyDetail($, t)
+  const { cloudId } = await site($)
+  const raw = await mcp<{ fields?: { description?: unknown; comment?: Comments } }>($, 'getJiraIssue', { cloudId, issueIdOrKey: t.key })
+  return {
+    description: adfToMarkdown(raw.fields?.description),
+    comments: (raw.fields?.comment?.comments ?? []).map(c => ({
+      author: c.author?.displayName ?? 'Jira',
+      at: c.created,
+      body: adfToMarkdown(c.body),
+    })),
+  }
+}
+
+type RawTransition = { id: string; name: string; to: { name: string; statusCategory: { key: string } } }
+
+export async function transitions($: EngineInterface, t: Ticket): Promise<Transition[]> {
+  if (!(await useMcp($))) return keyTransitions($, t)
+  const { cloudId } = await site($)
+  const raw = await mcp<{ transitions?: RawTransition[] } | RawTransition[]>($, 'getTransitionsForJiraIssue', { cloudId, issueIdOrKey: t.key })
+  const list = Array.isArray(raw) ? raw : (raw.transitions ?? [])
+  return list.map(tr => ({ id: tr.id, name: tr.to?.name ?? tr.name, type: statusTypeOf(tr.to?.statusCategory?.key ?? '', tr.to?.name ?? tr.name) }))
+}
+
+export async function transition($: EngineInterface, t: Ticket, to: Transition): Promise<void> {
+  if (!(await useMcp($))) return keyTransition($, t, to)
+  const { cloudId } = await site($)
+  await mcp($, 'transitionJiraIssue', { cloudId, issueIdOrKey: t.key, transition: { id: to.id } })
+}
+
+export async function comment($: EngineInterface, t: Ticket, body: string): Promise<void> {
+  if (!(await useMcp($))) return keyComment($, t, body)
+  const { cloudId } = await site($)
+  await mcp($, 'addCommentToJiraIssue', { cloudId, issueIdOrKey: t.key, commentBody: body })
+}
+
+export async function assignToMe($: EngineInterface, t: Ticket): Promise<void> {
+  if (!(await useMcp($))) return keyAssignToMe($, t)
+  const { cloudId } = await site($)
+  const self = await mcpMyself($)
+  await mcp($, 'editJiraIssue', { cloudId, issueIdOrKey: t.key, fields: { assignee: { accountId: self.accountId } } })
 }
