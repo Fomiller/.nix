@@ -2,7 +2,16 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { GroupBy, Pr, Prompting, PrEvent, Snapshot, Status, TimelineItem, View } from '../types'
-import { DETAIL_QUERY, firstLine, LIST_QUERY, mergeLists, toTimeline } from './github'
+import {
+  DETAIL_QUERY,
+  firstLine,
+  LIST_QUERY,
+  mergeLists,
+  SEARCH_QUERY,
+  searchQueryOf,
+  searchResultsOf,
+  toTimeline,
+} from './github'
 import type { ListData } from './github'
 import {
   ago,
@@ -11,6 +20,8 @@ import {
   ciMark,
   clip,
   groupOf,
+  isRemoteQuery,
+  matchesFilter,
   rowId,
   rowsOf,
   shortRef,
@@ -42,12 +53,18 @@ const eventsA = atom({ plugin: 'pr-organizer', key: 'events' } as const, [], {
   shape: 'events-1',
 })
 const pollMinutesA = atom({ plugin: 'pr-organizer', key: 'pollMinutes' } as const, 3)
+const filterA = atom({ plugin: 'pr-organizer', key: 'filter' } as const, '')
+const searchQueryA = atom({ plugin: 'pr-organizer', key: 'searchQuery' } as const, '')
+const searchResultsA = atom({ plugin: 'pr-organizer', key: 'searchResults' } as const, [], {
+  shape: 'search-1',
+})
+const searchingA = atom({ plugin: 'pr-organizer', key: 'isSearching' } as const, false)
 
 type Dollar = EngineInterface
 
 const PANE = 'pr-organizer'
 const GROUP_BYS: GroupBy[] = ['group', 'repo', 'none']
-const MODEL_TOOLS = 'mcp__pr-organizer__list_prs and mcp__pr-organizer__set_pr_group'
+const MODEL_TOOLS = 'mcp__pr-organizer__list_prs, mcp__pr-organizer__search_prs and mcp__pr-organizer__set_pr_group'
 
 let pollTimer: Timer | undefined
 
@@ -103,7 +120,10 @@ async function refresh($: Dollar, opts: { quiet?: boolean } = {}): Promise<strin
     await $.store.set('snapshot', snapshotOf(list))
     await update($, prsA, () => list)
     await update($, fetchedAtA, () => Date.now())
-    if (!opts.quiet) await setStatus($, null)
+    if (!opts.quiet) {
+      await setStatus($, null)
+      await ensureCursor($)
+    }
     return null
   } catch (err) {
     const msg = `Could not load PRs: ${errorText(err)}`
@@ -114,7 +134,14 @@ async function refresh($: Dollar, opts: { quiet?: boolean } = {}): Promise<strin
   }
 }
 
-async function fetchDetail($: Dollar, url: string) {
+const detailCache = new Map<string, TimelineItem[]>()
+
+async function fetchDetail($: Dollar, url: string, opts: { force?: boolean } = {}) {
+  const cached = detailCache.get(url)
+  if (cached && !opts.force) {
+    await update($, detailA, () => ({ url, items: cached }))
+    return
+  }
   await update($, detailA, d => (d?.url === url ? d : null))
   try {
     const ran = await $.process.run(
@@ -127,7 +154,9 @@ async function fetchDetail($: Dollar, url: string) {
     }
     const node = JSON.parse(ran.stdout).data?.resource
     if (!node) return
-    await update($, detailA, () => ({ url, items: toTimeline(node) }))
+    const items = toTimeline(node)
+    detailCache.set(url, items)
+    if ((await read($, selectedA)) === url) await update($, detailA, () => ({ url, items }))
   } catch (err) {
     await setStatus($, { text: `Comments: ${errorText(err)}`, isError: true })
   }
@@ -147,8 +176,10 @@ async function gh($: Dollar, doing: string, argv: string[]) {
       return
     }
     await refresh($, { quiet: true })
+    const query = await read($, searchQueryA)
+    if (query) await searchGithub($, query, { quiet: true })
     const selected = await read($, selectedA)
-    if ((await read($, modeA)) === 'detail' && selected) await fetchDetail($, selected)
+    if (selected) await fetchDetail($, selected, { force: true })
     await setStatus($, { text: `${doing}: done`, isError: false })
   } catch (err) {
     await setStatus($, { text: `${doing} failed: ${errorText(err)}`, isError: true })
@@ -192,15 +223,101 @@ async function openPr($: Dollar, url: string) {
   await fetchDetail($, url)
 }
 
-async function visibleRows($: Dollar): Promise<Row[]> {
-  const view = await read($, viewA)
+function shownPrs(
+  view: View,
+  prs: Pr[],
+  results: Pr[],
+  filter: string,
+  groups: Record<string, string>,
+): Pr[] {
   const current = VIEWS.find(v => v.value === view) ?? VIEWS[0]!
-  return rowsOf(
-    (await read($, prsA)).filter(current.test),
-    await read($, groupByA),
-    await read($, groupsA),
-    await read($, collapsedA),
+  const source = view === 'search' ? results : prs.filter(current.test)
+  return source.filter(p => matchesFilter(p, filter, groups))
+}
+
+async function visibleRows($: Dollar): Promise<Row[]> {
+  const groups = await read($, groupsA)
+  const list = shownPrs(
+    await read($, viewA),
+    await read($, prsA),
+    await read($, searchResultsA),
+    await read($, filterA),
+    groups,
   )
+  return rowsOf(list, await read($, groupByA), groups, await read($, collapsedA))
+}
+
+async function searchGithub(
+  $: Dollar,
+  text: string,
+  opts: { quiet?: boolean } = {},
+): Promise<{ error: string } | { results: Pr[] }> {
+  const query = searchQueryOf(text, await read($, scopeA))
+  if (!opts.quiet) await update($, searchingA, () => true)
+  try {
+    const ran = await $.process.run(
+      ['gh', 'api', 'graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${query}`],
+      { timeoutMs: 60_000 },
+    )
+    if (ran.exitCode !== 0) {
+      const error = `Search failed: ${firstLine(ran.stderr || ran.stdout)}`
+      if (!opts.quiet) await setStatus($, { text: error, isError: true })
+      return { error }
+    }
+    const results = searchResultsOf(JSON.parse(ran.stdout).data)
+    await update($, searchResultsA, () => results)
+    await update($, searchQueryA, () => text)
+    return { results }
+  } catch (err) {
+    const error = `Search failed: ${errorText(err)}`
+    if (!opts.quiet) await setStatus($, { text: error, isError: true })
+    return { error }
+  } finally {
+    if (!opts.quiet) await update($, searchingA, () => false)
+  }
+}
+
+async function applySearch($: Dollar, text: string) {
+  await update($, promptingA, () => null)
+  const trimmed = text.trim()
+  const view = await read($, viewA)
+  if (!trimmed) {
+    await clearSearch($)
+    return
+  }
+  if (view === 'search' || isRemoteQuery(trimmed)) {
+    await update($, filterA, () => '')
+    await update($, viewA, () => 'search')
+    await update($, searchQueryA, () => trimmed)
+    await update($, selectedA, () => null)
+    const found = await searchGithub($, trimmed)
+    if ('results' in found) await setStatus($, null)
+  } else {
+    await update($, filterA, () => trimmed)
+    await update($, selectedA, () => null)
+  }
+  await moveCursor($, firstPr)
+}
+
+async function clearSearch($: Dollar) {
+  await update($, filterA, () => '')
+  if ((await read($, viewA)) === 'search') {
+    await update($, searchQueryA, () => '')
+    await update($, searchResultsA, () => [])
+  }
+  await update($, selectedA, () => null)
+  await moveCursor($, firstPr)
+}
+
+const firstPr = (_: number, rows: Row[]) => Math.max(0, rows.findIndex(r => r.kind === 'pr'))
+
+async function ensureCursor($: Dollar) {
+  const rows = await visibleRows($)
+  const selected = await read($, selectedA)
+  const row = rows.find(r => rowId(r) === selected) ?? rows[firstPr(0, rows)]
+  if (!row) return
+  await update($, selectedA, () => rowId(row))
+  if (row.kind === 'pr') await fetchDetail($, row.pr.url).catch(() => {})
 }
 
 async function moveCursor($: Dollar, to: (index: number, rows: Row[]) => number) {
@@ -213,6 +330,7 @@ async function moveCursor($: Dollar, to: (index: number, rows: Row[]) => number)
   if (!row) return
   await update($, selectedA, () => rowId(row))
   await update($, confirmA, () => null)
+  if (row.kind === 'pr') fetchDetail($, row.pr.url).catch(() => {})
 }
 
 async function stepPr($: Dollar, delta: 1 | -1) {
@@ -292,14 +410,25 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'prs',
-      description: 'Open the PR organizer (args: refresh | scope <qualifiers> | poll <minutes|off>)',
-      argumentHint: '[refresh | scope org:acme | poll 5]',
+      description:
+        'Open the PR organizer (args: refresh | search <query> | author <login> | scope <qualifiers> | poll <minutes|off>)',
+      argumentHint: '[refresh | search <query> | author <login> | scope org:acme | poll 5]',
     })
     await $.tool.register({
       name: 'list_prs',
       description:
         "List the user's GitHub PRs (their open and recently merged ones, and ones awaiting their review) as JSON, with the group each one is in. Pass refresh=true to re-fetch from GitHub first.",
       inputSchema: { type: 'object', properties: { refresh: { type: 'boolean' } } },
+    })
+    await $.tool.register({
+      name: 'search_prs',
+      description:
+        'Search GitHub pull requests with GitHub search syntax (author:login, repo:owner/name, org:acme, label:x, is:open, is:merged, review-requested:login, free text). Returns JSON. Use it for PRs that are not the user\'s own.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, showInPane: { type: 'boolean' } },
+        required: ['query'],
+      },
     })
     await $.tool.register({
       name: 'set_pr_group',
@@ -353,7 +482,19 @@ export const register: Register = on => {
         text: minutes > 0 ? `Checking PRs every ${minutes} min.` : 'Background PR checks are off.',
       }
     }
+    if (sub === 'search' || sub === 'author') {
+      const words = rest.join(' ').trim()
+      if (!words) return { text: `Usage: /prs ${sub} <${sub === 'author' ? 'login' : 'query'}>` }
+      const text = sub === 'author' ? `author:${words.replace(/^@/, '')} is:open` : words
+      await openPane($)
+      await update($, modeA, () => 'list')
+      await update($, viewA, () => 'search')
+      await applySearch($, text)
+      const count = (await read($, searchResultsA)).length
+      return { text: `${count} PR(s) for: ${text}` }
+    }
     await openPane($)
+    await ensureCursor($)
     if (sub === 'refresh') {
       const err = await refresh($)
       return { text: err ?? 'PR organizer opened and refreshed.' }
@@ -387,6 +528,32 @@ export const register: Register = on => {
     }))
     return { result: JSON.stringify(list, null, 1) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'pr-organizer: listing PRs failed.' }))
+
+  on('tool.call', { tool: 'mcp__pr-organizer__search_prs' }, async ($, e) => {
+    const args = e as unknown as { query?: unknown; showInPane?: unknown }
+    const query = typeof args.query === 'string' ? args.query.trim() : ''
+    if (!query) return { deny: 'query must be a non-empty GitHub search string' }
+    const found = await searchGithub($, query, { quiet: args.showInPane !== true })
+    if ('error' in found) return { deny: found.error }
+    if (args.showInPane === true) {
+      await update($, viewA, () => 'search')
+      await update($, modeA, () => 'list')
+      await openPane($)
+    }
+    const list = found.results.map(p => ({
+      url: p.url,
+      repo: p.repo,
+      title: p.title,
+      author: p.author,
+      branch: p.headRef,
+      state: p.isDraft ? 'DRAFT' : p.state,
+      review: p.review,
+      ci: p.ci,
+      updatedAt: p.updatedAt,
+      labels: p.labels,
+    }))
+    return { result: JSON.stringify(list, null, 1) }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'pr-organizer: search failed.' }))
 
   on('tool.call', { tool: 'mcp__pr-organizer__set_pr_group' }, async ($, e) => {
     const args = e as unknown as { urls?: unknown; group?: unknown }
@@ -482,10 +649,15 @@ export const register: Register = on => {
     const detail = await read($, detailA)
     const detailOffset = await read($, detailOffsetA)
     const pollMinutes = await read($, pollMinutesA)
+    const filter = await read($, filterA)
+    const searchQuery = await read($, searchQueryA)
+    const searchResults = await read($, searchResultsA)
+    const isSearching = await read($, searchingA)
 
     const current = VIEWS.find(v => v.value === view) ?? VIEWS[0]!
-    const rows = rowsOf(prs.filter(current.test), groupBy, groups, collapsed)
-    const pr = prs.find(p => p.url === selected) ?? null
+    const rows = rowsOf(shownPrs(view, prs, searchResults, filter, groups), groupBy, groups, collapsed)
+    const pr = prs.find(p => p.url === selected) ?? searchResults.find(p => p.url === selected) ?? null
+    const rule = <Text dimColor>{'─'.repeat(Math.max(10, width - 1))}</Text>
     const isAsking = (action: string) => pr !== null && confirm === `${action}:${pr.url}`
 
     const key = (k: string, label: string, run: () => unknown, color?: string) => (
@@ -496,9 +668,9 @@ export const register: Register = on => {
 
     const statusLine = (
       <Box flexDirection="row" columnGap={1}>
-        {isLoading && <Text color="warning">loading…</Text>}
+        {(isLoading || isSearching) && <Text color="warning">{isSearching ? 'searching…' : 'loading…'}</Text>}
         {status && <Text color={status.isError ? 'error' : 'subtle'}>{clip(status.text, width - 12)}</Text>}
-        {!isLoading && !status && (
+        {!isLoading && !isSearching && !status && (
           <Text dimColor>
             {fetchedAt ? `updated ${ago(new Date(fetchedAt).toISOString(), now)} ago` : 'not loaded'}
             {pollMinutes > 0 ? ` · checks every ${pollMinutes}m` : ' · background checks off'}
@@ -508,8 +680,32 @@ export const register: Register = on => {
       </Box>
     )
 
+    if (prompting === 'search') {
+      const isGithub = view === 'search'
+      return (
+        <Box flexDirection="column">
+          <Text bold>{isGithub ? 'Search GitHub' : `Find in ${current.label}`}</Text>
+          <Text dimColor>
+            {isGithub
+              ? 'GitHub search syntax: author:pat repo:acme/api label:bug is:merged, plus free text.'
+              : 'Words filter this view by title, repo, branch, author, ticket, group and labels. A qualifier like author:pat searches GitHub instead.'}
+          </Text>
+          <Input
+            key="input-search"
+            label="/"
+            value={isGithub ? searchQuery : filter}
+            placeholder={isGithub ? 'author:pat is:open' : 'login, TICKETA-1, author:pat'}
+            submitLabel="search"
+            autoFocus
+            onSubmit={v => void applySearch($, v)}
+          />
+          <Button key="input-cancel" label="Cancel" onPress={() => void update($, promptingA, () => null)} />
+        </Box>
+      )
+    }
+
     if (prompting && pr) {
-      const fields: Record<Exclude<Prompting, null>, { label: string; placeholder: string; submit: (v: string) => void }> = {
+      const fields: Record<Exclude<Prompting, null | 'search'>, { label: string; placeholder: string; submit: (v: string) => void }> = {
         comment: {
           label: 'Comment',
           placeholder: 'Write a comment, Enter to post',
@@ -555,7 +751,9 @@ export const register: Register = on => {
       const b = badge(pr)
       const ci = ciMark(pr)
       const isOpen = pr.state === 'OPEN'
-      const items = detail?.url === pr.url ? detail.items : null
+      const all = detail?.url === pr.url ? detail.items : null
+      const description = all?.find(i => i.kind === 'description') ?? null
+      const items = all?.filter(i => i.kind !== 'description') ?? null
       const perItem = 8
       const room = Math.max(1, Math.floor((height - 12) / perItem))
       const offset = Math.min(detailOffset, Math.max(0, (items?.length ?? 1) - 1))
@@ -602,14 +800,14 @@ export const register: Register = on => {
         key('i', 'ask Claude', () => askClaude($, pr)),
         key('r', 'refresh', async () => {
           await refresh($)
-          await fetchDetail($, pr.url)
+          await fetchDetail($, pr.url, { force: true })
         }),
         key('q', 'quit', () => $.ui.close({ id: PANE })),
       )
 
       return (
         <Box flexDirection="column">
-          <Text bold>{clip(pr.title, width)}</Text>
+          <Text bold color="claude">{clip(pr.title, width)}</Text>
           <Box flexDirection="row" columnGap={1}>
             <Link href={pr.url} label={`${pr.repo}#${pr.number}`} />
             <Text color={b.color}>{b.text}</Text>
@@ -624,6 +822,12 @@ export const register: Register = on => {
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             {actions}
           </Box>
+          {rule}
+          {description && offset === 0 && (
+            <Box flexDirection="column" marginBottom={1}>
+              <Markdown text={clipBody(description.body, 10)} />
+            </Box>
+          )}
           <Text dimColor>
             {items === null
               ? 'Loading comments…'
@@ -649,15 +853,41 @@ export const register: Register = on => {
       )
     }
 
-    const listRoom = Math.max(4, height - 8)
+    const listRoom = Math.max(4, Math.min(rows.length, Math.floor((height - 8) * 0.55)))
     const cursor = Math.max(0, rows.findIndex(r => rowId(r) === selected))
     const start = Math.min(Math.max(0, cursor - Math.floor(listRoom / 2)), Math.max(0, rows.length - listRoom))
     const windowed = rows.slice(start, start + listRoom)
     const cursorRow = rows[cursor]
     const cursorPr = cursorRow?.kind === 'pr' ? cursorRow.pr : null
 
+    const previewRoom = Math.max(4, height - listRoom - 12)
+    const previewOf = (url: string) => {
+      if (detail?.url !== url) return <Text dimColor>Loading description and comments…</Text>
+      const desc = detail.items.find(i => i.kind === 'description')
+      const talk = detail.items.filter(i => i.kind !== 'description')
+      const descLines = Math.max(2, previewRoom - Math.min(3, talk.length) * 2 - 1)
+      return (
+        <Box flexDirection="column">
+          {desc ? <Markdown text={clipBody(desc.body, descLines)} /> : <Text dimColor>No description.</Text>}
+          {talk.length > 0 && (
+            <Text dimColor>
+              {talk.length} comment{talk.length === 1 ? '' : 's'}, newest first · l to read all
+            </Text>
+          )}
+          {talk.slice(0, 3).map((item, i) => (
+            <Text key={`peek-${i}`}>
+              <Text color={item.state === 'APPROVED' ? 'success' : item.state === 'CHANGES_REQUESTED' ? 'error' : 'suggestion'}>
+                {clip(itemHeader(item, now), Math.floor(width / 2))}
+              </Text>
+              <Text dimColor>{clip(` ${firstLine(item.body)}`, Math.max(10, width - Math.floor(width / 2) - 2))}</Text>
+            </Text>
+          ))}
+        </Box>
+      )
+    }
+
     const tabs = VIEWS.map((v, i) => {
-      const count = prs.filter(v.test).length
+      const count = v.value === 'search' ? searchResults.length : prs.filter(v.test).length
       const isOn = v.value === view
       return (
         <Button
@@ -668,7 +898,7 @@ export const register: Register = on => {
             void (async () => {
               await update($, viewA, () => v.value as View)
               await update($, selectedA, () => null)
-              await moveCursor($, () => 0)
+              await moveCursor($, firstPr)
             })()
           }
         >
@@ -698,10 +928,14 @@ export const register: Register = on => {
         await toggleFold($, owner)
         await update($, selectedA, () => `grp:${owner}`)
       }),
-      key('t', `group: ${groupBy}`, () =>
+      key('t', groupBy === 'group' ? 'by ticket' : groupBy === 'repo' ? 'by repo' : 'no groups', () =>
         update($, groupByA, g => GROUP_BYS[(GROUP_BYS.indexOf(g) + 1) % GROUP_BYS.length]!),
       ),
+      key('f', 'find', () => update($, promptingA, () => 'search')),
     ]
+    if (filter || (view === 'search' && searchQuery)) {
+      listKeys.push(key('u', 'clear search', () => clearSearch($)))
+    }
     if (cursorPr) {
       const p = cursorPr
       listKeys.push(key('o', 'browser', () => openInBrowser($, p.url)))
@@ -724,7 +958,7 @@ export const register: Register = on => {
       listKeys.push(key('i', 'ask Claude', () => askClaude($, p)))
     }
     listKeys.push(
-      key('c', 'Claude: group', () =>
+      key('c', 'Claude groups', () =>
         $.prompt.submit({
           text: `Group my pull requests by related work. Use ${MODEL_TOOLS}: list them, work out which ones belong to the same piece of work (shared ticket keys, branch names, titles, repos that change together), and put each cluster in a short descriptive group. Leave PRs that already sit in a sensible ticket group alone. Tell me the groups you made.`,
         }),
@@ -739,8 +973,21 @@ export const register: Register = on => {
           {tabs}
         </Box>
         {statusLine}
-        {prs.length === 0 && !isLoading && <Text dimColor>No PRs loaded yet. Press r.</Text>}
-        {prs.length > 0 && rows.length === 0 && <Text dimColor>Nothing in {current.label}.</Text>}
+        {(filter || (view === 'search' && searchQuery)) && (
+          <Text>
+            <Text color="suggestion">/ </Text>
+            {view === 'search' ? searchQuery : filter}
+            <Text dimColor> · u clears</Text>
+          </Text>
+        )}
+        {rule}
+        {view !== 'search' && prs.length === 0 && !isLoading && <Text dimColor>No PRs loaded yet. Press r.</Text>}
+        {view === 'search' && !searchQuery && (
+          <Text dimColor>Press f and search GitHub, e.g. author:pat is:open or repo:acme/api label:bug.</Text>
+        )}
+        {(view !== 'search' ? prs.length > 0 : searchQuery !== '') && rows.length === 0 && !isSearching && (
+          <Text dimColor>{filter ? `Nothing in ${current.label} matches "${filter}".` : `Nothing in ${current.label}.`}</Text>
+        )}
         {start > 0 && <Text dimColor>↑ {start} more</Text>}
         {windowed.map(row => {
           const id = rowId(row)
@@ -762,7 +1009,8 @@ export const register: Register = on => {
           const b = badge(p)
           const ci = ciMark(p)
           const ref = shortRef(p)
-          const titleRoom = Math.max(10, width - ref.length - b.text.length - 10)
+          const who = p.isMine ? '' : `@${p.author}`
+          const titleRoom = Math.max(10, width - ref.length - b.text.length - who.length - 12)
           return (
             <Button key={id} plain onPress={() => void (async () => {
               if (selected === id) await openPr($, id)
@@ -772,16 +1020,28 @@ export const register: Register = on => {
               <Text color={ci.color}>{ci.text}</Text>{' '}
               <Text color={b.color}>{b.text}</Text>{' '}
               <Text dimColor>{ref}</Text>{' '}
-              <Text inverse={isCursor}>{clip(p.title, titleRoom)}</Text>
+              <Text inverse={isCursor} bold={isCursor}>{clip(p.title, titleRoom)}</Text>
+              {who ? <Text color="suggestion"> {who}</Text> : ''}
             </Button>
           )
         })}
         {start + listRoom < rows.length && <Text dimColor>↓ {rows.length - start - listRoom} more</Text>}
+        {cursorPr && rule}
         {cursorPr && (
-          <Text dimColor>
-            {clip(`${cursorPr.headRef} → ${cursorPr.baseRef} · ${cursorPr.author} · ${ago(cursorPr.updatedAt, now)} ago${cursorPr.reviewers.length ? ` · waiting on ${cursorPr.reviewers.join(', ')}` : ''}`, width)}
-          </Text>
+          <Box flexDirection="column">
+            <Text bold color="claude">{clip(cursorPr.title, width)}</Text>
+            <Box flexDirection="row" columnGap={1}>
+              <Text color={badge(cursorPr).color}>{badge(cursorPr).text}</Text>
+              <Text color={ciMark(cursorPr).color}>CI {(cursorPr.ci ?? 'none').toLowerCase()}</Text>
+              {cursorPr.mergeable === 'CONFLICTING' && <Text color="error">conflicts</Text>}
+              <Text dimColor>
+                {clip(`${cursorPr.headRef} → ${cursorPr.baseRef} · @${cursorPr.author} · ${ago(cursorPr.updatedAt, now)} ago${cursorPr.reviewers.length ? ` · waiting on ${cursorPr.reviewers.join(', ')}` : ''}`, Math.max(20, width - 30))}
+              </Text>
+            </Box>
+            {previewOf(cursorPr.url)}
+          </Box>
         )}
+        {rule}
         <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
           {listKeys}
         </Box>

@@ -93,6 +93,21 @@ const DETAIL = JSON.stringify({
   },
 })
 
+const SEARCH = JSON.stringify({
+  data: {
+    viewer: { login: 'me' },
+    results: {
+      nodes: [
+        node(20, 'pat refactors billing', 'pat/billing', { author: { login: 'pat' } }),
+        node(21, 'pat fixes login', 'pat/login', {
+          author: { login: 'pat' },
+          reviewRequests: { nodes: [{ requestedReviewer: { login: 'me' } }] },
+        }),
+      ],
+    },
+  },
+})
+
 function engine(on: On, list: () => string, store: Record<string, unknown> = {}) {
   const ran: string[][] = []
   const toasts: string[] = []
@@ -109,7 +124,13 @@ function engine(on: On, list: () => string, store: Record<string, unknown> = {})
   on('process.run', (_, e) => {
     ran.push([...e.argv])
     const query = e.argv[4] ?? ''
-    const stdout = query.includes('$url') ? DETAIL : e.argv[1] === 'api' ? list() : ''
+    const stdout = query.includes('$url')
+      ? DETAIL
+      : query.includes('$q:')
+        ? SEARCH
+        : e.argv[1] === 'api'
+          ? list()
+          : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return { ran, toasts }
@@ -186,5 +207,43 @@ test('the model can regroup PRs', async ($, on) => {
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Button', key: 'grp:Billing' }))?.text).toContain('(2)')
+  await ui.unmount()
+})
+
+test('words filter the view, qualifiers search GitHub, and the preview shows the description', async ($, on) => {
+  const { ran } = engine(on, () => listJson())
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run(refreshArgs)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Markdown', text: /Adds the login endpoint/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Handle the error here/ })).toBeTruthy()
+
+  await ui.press({ key: 'key-f' })
+  await ui.input({ key: 'input-search', text: 'billing' })
+  expect(await ui.find({ type: 'Button', key: 'grp:TICKETB-7' })).toBeTruthy()
+  expect(await ui.find({ type: 'Button', key: 'grp:TICKETA-1' })).toBeFalsy()
+  await ui.press({ key: 'key-u' })
+  expect(await ui.find({ type: 'Button', key: 'grp:TICKETA-1' })).toBeTruthy()
+
+  ran.length = 0
+  await ui.press({ key: 'key-f' })
+  await ui.input({ key: 'input-search', text: 'author:pat' })
+  const q = ran.find(a => (a[4] ?? '').includes('$q:'))
+  expect(q?.[6]).toBe('q=is:pr author:pat archived:false sort:updated-desc')
+  const row = await ui.find({ type: 'Button', key: 'https://github.com/acme/api/pull/21' })
+  expect(row?.text).toContain('@pat')
+  await ui.unmount()
+})
+
+test('/prs author searches by another login', async ($, on) => {
+  const { ran } = engine(on, () => listJson())
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const out = await $.command.run({ command: 'prs', args: 'author @pat' } as never)
+  expect(out.text).toContain('2 PR(s)')
+  expect(ran.some(a => a[6] === 'q=is:pr author:pat is:open archived:false sort:updated-desc')).toBe(true)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'https://github.com/acme/api/pull/20' })).toBeTruthy()
   await ui.unmount()
 })

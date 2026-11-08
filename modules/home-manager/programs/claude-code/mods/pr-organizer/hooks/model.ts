@@ -35,7 +35,34 @@ export const VIEWS: { value: View; label: string; test: (p: Pr) => boolean }[] =
     test: p => p.isReviewRequested && p.state === 'OPEN',
   },
   { value: 'merged', label: 'Merged', test: p => p.isMine && p.state === 'MERGED' },
+  { value: 'search', label: 'Search', test: () => true },
 ]
+
+const QUALIFIER = /(^|\s)-?[a-z-]+:\S/
+
+export function isRemoteQuery(text: string): boolean {
+  return QUALIFIER.test(text)
+}
+
+export function matchesFilter(pr: Pr, filter: string, groups: Record<string, string>): boolean {
+  const words = filter.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return true
+  const hay = [
+    pr.title,
+    pr.repo,
+    `#${pr.number}`,
+    pr.headRef,
+    pr.author,
+    `@${pr.author}`,
+    ticketOf(pr) ?? '',
+    groups[pr.url] ?? '',
+    ...pr.labels,
+    ...pr.reviewers,
+  ]
+    .join(' ')
+    .toLowerCase()
+  return words.every(w => hay.includes(w))
+}
 
 const TICKET = /(?:^|[^A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])/
 

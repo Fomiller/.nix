@@ -21,6 +21,11 @@ export const LIST_QUERY = `query($mine: String!, $merged: String!, $review: Stri
   review: search(query: $review, type: ISSUE, first: 40) { ${PR_FIELDS} }
 }`
 
+export const SEARCH_QUERY = `query($q: String!) {
+  viewer { login }
+  results: search(query: $q, type: ISSUE, first: 50) { ${PR_FIELDS} }
+}`
+
 export const DETAIL_QUERY = `query($url: URI!) {
   resource(url: $url) { ... on PullRequest {
     body createdAt author { login }
@@ -95,6 +100,25 @@ export function toPr(n: Node, isMine: boolean, isReviewRequested: boolean): Pr {
     activity: (n.comments?.totalCount ?? 0) + (n.reviews?.totalCount ?? 0),
     lastActor: lastActor(n),
   }
+}
+
+export function searchResultsOf(data: { viewer: { login: string }; results: { nodes: Node[] } }): Pr[] {
+  const me = data.viewer.login
+  return data.results.nodes
+    .filter(n => n?.url)
+    .map(n => {
+      const pr = toPr(n, n.author?.login === me, false)
+      return { ...pr, isReviewRequested: pr.reviewers.includes(me) }
+    })
+}
+
+export function searchQueryOf(text: string, scope: string): string {
+  const parts = [text.trim()]
+  if (!/(^|\s)is:(pr|pull-request)\b/.test(text)) parts.unshift('is:pr')
+  if (!/(^|\s)archived:/.test(text)) parts.push('archived:false')
+  if (!/(^|\s)sort:/.test(text)) parts.push('sort:updated-desc')
+  if (scope.trim()) parts.push(scope.trim())
+  return parts.filter(Boolean).join(' ')
 }
 
 export function mergeLists(data: ListData): Pr[] {

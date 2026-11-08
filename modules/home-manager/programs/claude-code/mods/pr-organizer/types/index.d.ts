@@ -31,12 +31,13 @@ export type View =
   | 'failing'
   | 'to-review'
   | 'merged'
+  | 'search'
 
 export type GroupBy = 'group' | 'repo' | 'none'
 
 export type Mode = 'list' | 'detail'
 
-export type Prompting = 'comment' | 'reviewers' | 'group' | null
+export type Prompting = 'comment' | 'reviewers' | 'group' | 'search' | null
 
 export type Status = { text: string; isError: boolean } | null
 
@@ -102,6 +103,10 @@ declare module 'claude-code' {
       detailOffset: number
       events: Shaped<PrEvent[]>
       pollMinutes: number
+      filter: string
+      searchQuery: string
+      searchResults: Shaped<Pr[]>
+      isSearching: boolean
     }
   }
 }

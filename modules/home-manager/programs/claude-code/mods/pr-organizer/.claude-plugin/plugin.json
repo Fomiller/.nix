@@ -1,6 +1,6 @@
 {
   "name": "pr-organizer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A /prs pane to view your GitHub PRs by state, group them by ticket or custom group, and act on them (merge, close, ready, review, comment).",
   "types": "./types/index.d.ts",
   "license": "MIT",

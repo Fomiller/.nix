@@ -7,6 +7,8 @@ A Claude Code mod that adds a `/prs` pane for working through your GitHub pull r
 ```
 /prs                   open the pane (re-fetches if data is more than 5 min old)
 /prs refresh           open and re-fetch now
+/prs search <query>    search GitHub, e.g. /prs search repo:acme/api label:bug
+/prs author <login>    open PRs by someone else
 /prs scope org:acme    limit every search to extra gh qualifiers (saved)
 /prs scope             clear the scope
 /prs poll 5            check for PR changes every 5 minutes (default 3, saved)
@@ -25,7 +27,9 @@ List:
 | `g` / `e` | top / end |
 | `l` | open the PR conversation, or fold a group |
 | `z` | fold the group under the cursor |
-| `1`-`8` | switch view: open, draft, awaiting review, approved, changes requested, CI failing, to review, merged |
+| `1`-`9` | switch view: open, draft, awaiting review, approved, changes requested, CI failing, to review, merged, search |
+| `f` | find (see Search) |
+| `u` | clear the search |
 | `t` | group by ticket / repo / none |
 | `m` | merge an approved PR (press twice) |
 | `a` | approve a PR waiting on you (press twice) |
@@ -51,6 +55,18 @@ PR conversation:
 | `v` | request reviewers |
 | `s` | set group |
 | `o` / `i` / `r` / `q` | browser / ask Claude / refresh / close |
+
+The list shows the highlighted PR's status, description and latest comments underneath it.
+
+## Search
+
+Press `f` and type:
+
+- Plain words filter the current view. They match the title, repo, branch, author, ticket, group, labels and reviewers. `billing pat` keeps PRs that match both words.
+- Anything with a GitHub qualifier runs a GitHub search and shows the results in the Search view (`9`). For example `author:pat`, `author:pat is:merged`, `repo:acme/api label:bug` or `review-requested:sam`.
+- In the Search view, everything you type goes to GitHub.
+
+Rows for PRs you did not open show `@author`. Claude can search too, through the `mcp__pr-organizer__search_prs` tool.
 
 ## Background updates
 
