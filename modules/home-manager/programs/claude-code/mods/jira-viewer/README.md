@@ -27,6 +27,9 @@ The sprint comes from `customfield_10020`, the usual sprint field on Jira Cloud.
 ```
 /jira                  open the pane
 /jira refresh          open and re-fetch now
+/jira project          pick a project
+/jira project DO       switch to a project by name or key
+/jira project mine     back to your own tickets
 /jira search <query>   search Jira
 /jira poll 10          check every 10 minutes (default 5, saved)
 /jira poll off         stop background checks
@@ -34,9 +37,19 @@ The sprint comes from `customfield_10020`, the usual sprint field on Jira Cloud.
 
 ## Views
 
-`1` mine (assigned, not done), `2` todo, `3` in progress, `4` in review, `5` backlog and triage, `6` created by me, `7` done in the last 14 days, `8` search.
+`1` all open, `2` mine, `3` todo, `4` in progress, `5` in review, `6` backlog and triage, `7` created by me, `8` done in the last 14 days, `9` search.
 
 "In review" is any started status whose name contains "review", or contains "QA", "testing" or "verify".
+
+## Projects
+
+The chip next to the tabs shows the scope: **My work** (tickets assigned to you or created by you) or one project. In a project, the pane loads every open ticket in it plus the ones finished in the last 14 days, whoever they belong to. The status tabs then cover the whole project. The pane remembers the last project between sessions.
+
+- `p` opens the picker. `0` is My work and `1`-`9` pick the first nine projects. `j`/`k` and `l` reach the rest, and `f` filters by name.
+- `n` and `b` step to the next and previous project without the picker.
+- Click the chip to open the picker.
+
+Toasts stay about your own tickets in either scope.
 
 ## Keys
 
@@ -47,6 +60,7 @@ List:
 | `j` / `k` / `g` / `e` | down / up / top / end |
 | `l` | open the ticket, or fold a group |
 | `z` | fold the group under the cursor |
+| `p` / `n` / `b` | pick a project / next project / previous project |
 | `t` | group by project, status, sprint, parent, or none |
 | `f` / `u` | find / clear the search |
 | `s` | change status |

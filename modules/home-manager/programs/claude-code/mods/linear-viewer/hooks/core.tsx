@@ -15,6 +15,8 @@ import {
   backend as srcBackend,
   blockedTools as srcBlockedTools,
   setBackground as srcSetBackground,
+  projects as srcProjects,
+  projectIssues as srcProjectIssues,
   readTools,
 } from './source'
 
@@ -50,6 +52,8 @@ export type TicketDetail = { description: string; comments: Comment[] }
 
 export type Transition = { id: string; name: string; type: StatusType }
 
+export type Project = { id: string; name: string }
+
 export type Meta = {
   name: string
   command: string
@@ -61,9 +65,9 @@ export type Meta = {
 
 type Els = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button' | 'Markdown' | 'Input' | 'Link'>
 
-type View = 'mine' | 'todo' | 'progress' | 'review' | 'backlog' | 'created' | 'done' | 'search'
+type View = 'all' | 'mine' | 'todo' | 'progress' | 'review' | 'backlog' | 'created' | 'done' | 'search'
 type GroupBy = 'project' | 'status' | 'sprint' | 'parent' | 'none'
-type Prompting = 'comment' | 'status' | 'search' | null
+type Prompting = 'comment' | 'status' | 'search' | 'project' | 'projectFilter' | null
 type EventKind = 'assigned' | 'status' | 'comment'
 type TicketEvent = { id: string; key: string; kind: EventKind; text: string; at: number }
 type Snapshot = Record<string, { status: string; isAssignedToMe: boolean; lastCommentAt: string | null; updatedAt?: string }>
@@ -71,18 +75,19 @@ type Row = { kind: 'group'; name: string; count: number } | { kind: 'ticket'; t:
 
 const isOpen = (t: Ticket) => t.statusType !== 'done' && t.statusType !== 'canceled'
 
-const VIEWS: { value: View; label: string; test: (t: Ticket) => boolean }[] = [
+const VIEWS: { value: View; label: string; test: (t: Ticket, inProject: boolean) => boolean }[] = [
+  { value: 'all', label: 'All', test: t => isOpen(t) },
   { value: 'mine', label: 'Mine', test: t => t.isAssignedToMe && isOpen(t) },
-  { value: 'todo', label: 'Todo', test: t => t.isAssignedToMe && t.statusType === 'unstarted' },
-  { value: 'progress', label: 'In progress', test: t => t.isAssignedToMe && t.statusType === 'started' },
-  { value: 'review', label: 'In review', test: t => t.isAssignedToMe && t.statusType === 'review' },
+  { value: 'todo', label: 'Todo', test: (t, p) => (p || t.isAssignedToMe) && t.statusType === 'unstarted' },
+  { value: 'progress', label: 'In progress', test: (t, p) => (p || t.isAssignedToMe) && t.statusType === 'started' },
+  { value: 'review', label: 'In review', test: (t, p) => (p || t.isAssignedToMe) && t.statusType === 'review' },
   {
     value: 'backlog',
     label: 'Backlog',
-    test: t => t.isAssignedToMe && (t.statusType === 'backlog' || t.statusType === 'triage'),
+    test: (t, p) => (p || t.isAssignedToMe) && (t.statusType === 'backlog' || t.statusType === 'triage'),
   },
   { value: 'created', label: 'Created', test: t => t.isCreatedByMe && isOpen(t) },
-  { value: 'done', label: 'Done', test: t => t.isAssignedToMe && !isOpen(t) },
+  { value: 'done', label: 'Done', test: (t, p) => (p || t.isAssignedToMe) && !isOpen(t) },
   { value: 'search', label: 'Search', test: () => true },
 ]
 
@@ -227,6 +232,12 @@ const S = {
   setupError: null as string | null,
   pollMinutes: 5,
   backend: null as string | null,
+  project: null as Project | null,
+  projects: [] as Project[],
+  projectsAt: 0,
+  projectTickets: [] as Ticket[],
+  projectCursor: 0,
+  projectFilter: '',
 }
 const details = new Map<string, TicketDetail>()
 const ownChanges = new Map<string, number>()
@@ -240,14 +251,89 @@ function set($: EngineInterface, patch: Partial<typeof S>) {
   redraw($)
 }
 const find = (key: string | null) =>
-  key ? (S.tickets.find(t => t.key === key) ?? S.results.find(t => t.key === key) ?? null) : null
+  key
+    ? (S.tickets.find(t => t.key === key) ??
+      S.projectTickets.find(t => t.key === key) ??
+      S.results.find(t => t.key === key) ??
+      null)
+    : null
+
+const scopeTickets = () => (S.project ? S.projectTickets : S.tickets)
+const groupByNow = (): GroupBy => (S.project && S.groupBy === 'project' ? 'status' : S.groupBy)
+const countIn = (v: (typeof VIEWS)[number]) =>
+  v.value === 'search' ? S.results.length : scopeTickets().filter(t => v.test(t, S.project !== null)).length
 
 const shown = () => {
   const current = VIEWS.find(v => v.value === S.view) ?? VIEWS[0]!
-  const base = S.view === 'search' ? S.results : S.tickets.filter(current.test)
+  const base = S.view === 'search' ? S.results : scopeTickets().filter(t => current.test(t, S.project !== null))
   return base.filter(t => matchesFilter(t, S.filter))
 }
-const rows = () => rowsOf(shown(), S.groupBy, S.collapsed)
+const rows = () => rowsOf(shown(), groupByNow(), S.collapsed)
+
+async function loadProjects($: EngineInterface, force = false) {
+  if (!force && S.projects.length > 0 && Date.now() - S.projectsAt < 10 * 60_000) return
+  try {
+    const list = await srcProjects($)
+    S.projects = [...list].sort((a, b) => a.name.localeCompare(b.name))
+    S.projectsAt = Date.now()
+  } catch (err) {
+    S.status = { text: `Could not load projects: ${errorText(err)}`, isError: true }
+  }
+  redraw($)
+}
+
+async function loadProjectTickets($: EngineInterface) {
+  const p = S.project
+  if (!p) return
+  set($, { isLoading: true })
+  try {
+    const list = await srcProjectIssues($, p)
+    if (S.project?.id === p.id) S.projectTickets = list
+  } catch (err) {
+    S.status = { text: `Could not load ${p.name}: ${errorText(err)}`, isError: true }
+  } finally {
+    S.isLoading = false
+    redraw($)
+  }
+  ensureCursor($)
+}
+
+async function selectProject($: EngineInterface, p: Project | null) {
+  set($, {
+    project: p,
+    projectTickets: [],
+    prompting: null,
+    mode: 'list',
+    view: p ? 'all' : 'mine',
+    selected: null,
+    filter: '',
+    collapsed: [],
+  })
+  await $.store.set('project', p)
+  if (p) await loadProjectTickets($)
+  else ensureCursor($)
+}
+
+async function stepProject($: EngineInterface, delta: number) {
+  await loadProjects($)
+  const order: (Project | null)[] = [null, ...S.projects]
+  const at = order.findIndex(p => (p?.id ?? null) === (S.project?.id ?? null))
+  await selectProject($, order[(at + delta + order.length) % order.length] ?? null)
+}
+
+function projectsShown(): Project[] {
+  const f = S.projectFilter.toLowerCase()
+  return f ? S.projects.filter(p => p.name.toLowerCase().includes(f) || p.id.toLowerCase().includes(f)) : S.projects
+}
+
+function matchProject(text: string): Project | null {
+  const q = text.trim().toLowerCase()
+  return (
+    S.projects.find(p => p.id.toLowerCase() === q || p.name.toLowerCase() === q) ??
+    S.projects.find(p => p.name.toLowerCase().includes(q)) ??
+    null
+  )
+}
 
 async function loadDetail($: EngineInterface, key: string, force = false) {
   const t = find(key)
@@ -358,6 +444,7 @@ async function refreshNow($: EngineInterface, quiet: boolean): Promise<string | 
     S.fetchedAt = Date.now()
     if (!quiet) S.status = null
     for (const t of list) if (details.has(t.key) && find(t.key)?.updatedAt !== t.updatedAt) details.delete(t.key)
+    if (!quiet && S.project) await loadProjectTickets($)
     if (!quiet) ensureCursor($)
     return null
   } catch (err) {
@@ -409,6 +496,7 @@ async function act($: EngineInterface, doing: string, t: Ticket, run: () => Prom
     ownChanges.set(t.key, Date.now())
     await run()
     await refresh($, true)
+    if (S.project) S.projectTickets = await srcProjectIssues($, S.project)
     if (S.view === 'search' && S.searchQuery) S.results = await srcSearch($, S.searchQuery)
     await loadDetail($, t.key, true)
     set($, { status: { text: `${doing}: done`, isError: false } })
@@ -551,8 +639,8 @@ export function registerTracker(on: On): void {
       details.clear()
       await $.command.register({
         name: source.command,
-        description: `Open the ${source.name} ticket viewer (args: refresh | search <query> | poll <minutes|off>)`,
-        argumentHint: '[refresh | search <query> | poll 5]',
+        description: `Open the ${source.name} ticket viewer (args: refresh | project [name|mine] | search <query> | poll <minutes|off>)`,
+        argumentHint: '[refresh | project [name] | search <query> | poll 5]',
       })
       await $.tool.register({
         name: 'search_tickets',
@@ -563,6 +651,11 @@ export function registerTracker(on: On): void {
       if (typeof groupBy === 'string' && GROUP_BYS.includes(groupBy as GroupBy)) S.groupBy = groupBy as GroupBy
       const minutes = await $.store.get('pollMinutes')
       if (typeof minutes === 'number') S.pollMinutes = minutes
+      const project = (await $.store.get('project')) as Project | null | undefined
+      if (project && typeof project.id === 'string') {
+        S.project = project
+        S.view = 'all'
+      }
       startPolling($)
       $.clock.after(8_000, () => void refresh($, true))
       return next(e)
@@ -585,6 +678,22 @@ export function registerTracker(on: On): void {
         set($, { setupError: setup })
         return { text: setup }
       }
+      if (sub === 'project') {
+        const q = rest.join(' ').trim()
+        await loadProjects($, true)
+        if (!q) {
+          set($, { prompting: 'project', projectCursor: 0, projectFilter: '' })
+          return { text: `Pick a ${source.name} project in the pane.` }
+        }
+        if (/^(mine|me|none|my work)$/i.test(q)) {
+          await selectProject($, null)
+          return { text: 'Showing your own tickets.' }
+        }
+        const p = matchProject(q)
+        if (!p) return { text: `No open project matches "${q}".` }
+        await selectProject($, p)
+        return { text: `Showing ${p.name}: ${S.projectTickets.length} ticket(s).` }
+      }
       if (sub === 'search') {
         const q = rest.join(' ').trim()
         if (!q) return { text: `Usage: /${source.command} search <query>` }
@@ -595,6 +704,7 @@ export function registerTracker(on: On): void {
         const err = await refresh($)
         return { text: err ?? `${source.name} viewer opened.` }
       }
+      if (S.project && S.projectTickets.length === 0) await loadProjectTickets($)
       ensureCursor($)
       return { text: `${source.name} viewer opened.` }
     })
@@ -713,6 +823,68 @@ export function registerTracker(on: On): void {
         )
       }
 
+      if (S.prompting === 'projectFilter') {
+        return (
+          <Box flexDirection="column" rowGap={1}>
+            {chip(els, 'Find a project', 'claude')}
+            <Box borderStyle="round" borderColor="claude" paddingX={1}>
+              <Input key="input-project" label="/" value={S.projectFilter} placeholder="name or key" submitLabel="filter" autoFocus onSubmit={v => set($, { projectFilter: v.trim(), projectCursor: 0, prompting: 'project' })} />
+            </Box>
+          </Box>
+        )
+      }
+
+      if (S.prompting === 'project') {
+        const options: (Project | null)[] = [null, ...projectsShown()]
+        const cur = Math.min(S.projectCursor, options.length - 1)
+        const room = Math.max(5, height - 8)
+        const startAt = Math.min(Math.max(0, cur - Math.floor(room / 2)), Math.max(0, options.length - room))
+        const choose = (p: Project | null) => void selectProject($, p)
+        return (
+          <Box flexDirection="column">
+            <Box flexDirection="row" columnGap={1}>
+              {chip(els, `${source.name} projects`, 'claude')}
+              {S.projectFilter ? <Text color="suggestion">/ {S.projectFilter}</Text> : <Text dimColor>{`${S.projects.length} open`}</Text>}
+            </Box>
+            {statusLine}
+            {rule(els, width)}
+            {S.projects.length === 0 && <Text dimColor>Loading projects…</Text>}
+            {startAt > 0 && <Text dimColor>  ↑ {startAt} more</Text>}
+            {options.slice(startAt, startAt + room).map((p, j) => {
+              const i = startAt + j
+              const isCursor = i === cur
+              const isCurrent = (p?.id ?? null) === (S.project?.id ?? null)
+              const digit = i <= 9 ? String(i) : undefined
+              return (
+                <Button key={`project-${p?.id ?? 'mine'}`} plain hotkey={digit} onPress={() => choose(p)}>
+                  <Text color={isCursor ? 'claude' : 'promptBorder'}>{isCursor ? '▌' : ' '}</Text>
+                  <Text bold={isCursor} inverse={isCursor}>{` ${clip(p ? p.name : 'My work', width - 20)} `}</Text>
+                  {p && p.id !== p.name ? <Text dimColor>{` ${p.id}`}</Text> : ''}
+                  {isCurrent ? <Text color="success"> current</Text> : ''}
+                </Button>
+              )
+            })}
+            {startAt + room < options.length && <Text dimColor>  ↓ {options.length - startAt - room} more</Text>}
+            {rule(els, width)}
+            {keyBar([
+              [
+                key('j', 'down', () => set($, { projectCursor: Math.min(cur + 1, options.length - 1) })),
+                key('k', 'up', () => set($, { projectCursor: Math.max(0, cur - 1) })),
+                key('g', 'top', () => set($, { projectCursor: 0 })),
+                key('e', 'end', () => set($, { projectCursor: options.length - 1 })),
+                key('l', 'choose', () => choose(options[cur] ?? null)),
+              ],
+              [
+                key('f', 'find', () => set($, { prompting: 'projectFilter' })),
+                ...(S.projectFilter ? [key('u', 'clear', () => set($, { projectFilter: '', projectCursor: 0 }))] : []),
+                key('r', 'reload', () => loadProjects($, true)),
+                key('h', 'cancel', () => set($, { prompting: null })),
+              ],
+            ])}
+          </Box>
+        )
+      }
+
       if (S.prompting === 'comment' && t) {
         return (
           <Box flexDirection="column" rowGap={1}>
@@ -824,10 +996,10 @@ export function registerTracker(on: On): void {
       const cursorT = cursorRow?.kind === 'ticket' ? cursorRow.t : null
 
       const tabs = VIEWS.map((v, i) => {
-        const count = v.value === 'search' ? S.results.length : S.tickets.filter(v.test).length
+        const count = countIn(v)
         const isOn = v.value === S.view
         return (
-          <Button key={`view-${v.value}`} plain hotkey={String(i + 1)} onPress={() => {
+          <Button key={`view-${v.value}`} plain hotkey={String((i + 1) % 10)} onPress={() => {
             set($, { view: v.value, selected: null })
             cursorTo($, firstTicket)
           }}>
@@ -856,7 +1028,7 @@ export function registerTracker(on: On): void {
         key('z', 'fold', () => {
           const row = allRows[cursor]
           if (!row) return
-          const name = row.kind === 'group' ? row.name : groupOf(row.t, S.groupBy)
+          const name = row.kind === 'group' ? row.name : groupOf(row.t, groupByNow())
           set($, {
             collapsed: S.collapsed.includes(name) ? S.collapsed.filter(n => n !== name) : [...S.collapsed, name],
             selected: `grp:${name}`,
@@ -866,8 +1038,9 @@ export function registerTracker(on: On): void {
       const findKeys = [
         key('f', 'find', () => set($, { prompting: 'search' })),
         ...(S.filter || (S.view === 'search' && S.searchQuery) ? [key('u', 'clear', () => clearSearch($))] : []),
-        key('t', `by ${S.groupBy}`, async () => {
-          const next = GROUP_BYS[(GROUP_BYS.indexOf(S.groupBy) + 1) % GROUP_BYS.length]!
+        key('t', `by ${groupByNow()}`, async () => {
+          const options = S.project ? GROUP_BYS.filter(g => g !== 'project') : GROUP_BYS
+          const next = options[(options.indexOf(groupByNow()) + 1) % options.length]!
           set($, { groupBy: next, collapsed: [] })
           await $.store.set('groupBy', next)
         }),
@@ -883,13 +1056,25 @@ export function registerTracker(on: On): void {
             key('o', 'browser', () => openInBrowser($, cursorT.url)),
           ]
         : []
+      const projKeys = [
+        key('p', 'project', async () => {
+          set($, { prompting: 'project', projectFilter: '', projectCursor: 0 })
+          await loadProjects($)
+          const at = S.projects.findIndex(x => x.id === S.project?.id)
+          set($, { projectCursor: at + 1 })
+        }),
+        key('n', 'next', () => stepProject($, 1)),
+        key('b', 'prev', () => stepProject($, -1)),
+      ]
       const misc = [key('r', 'refresh', () => refresh($)), key('q', 'quit', () => $.ui.close({ id: source.pane }))]
 
       const list = (
         <Box flexDirection="column" width={isWide ? listWidth : undefined}>
-          {S.view !== 'search' && S.tickets.length === 0 && !S.isLoading && <Text dimColor>Nothing loaded yet. Press r.</Text>}
+          {S.view !== 'search' && scopeTickets().length === 0 && !S.isLoading && (
+            <Text dimColor>{S.project ? `No open tickets in ${S.project.name}.` : 'Nothing loaded yet. Press r.'}</Text>
+          )}
           {S.view === 'search' && !S.searchQuery && <Text dimColor>Press f to search. {source.searchHelp}</Text>}
-          {(S.view !== 'search' ? S.tickets.length > 0 : S.searchQuery !== '') && allRows.length === 0 && !S.isSearching && (
+          {(S.view !== 'search' ? scopeTickets().length > 0 : S.searchQuery !== '') && allRows.length === 0 && !S.isSearching && (
             <Text dimColor>{S.filter ? `Nothing in ${current.label} matches "${S.filter}".` : `Nothing in ${current.label}.`}</Text>
           )}
           {start > 0 && <Text dimColor>  ↑ {start} more</Text>}
@@ -966,6 +1151,16 @@ export function registerTracker(on: On): void {
         <Box flexDirection="column">
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             {chip(els, `◆ ${source.name}`, 'claude')}
+            <Button key="project-chip" plain onPress={() => void (async () => {
+              set($, { prompting: 'project', projectFilter: '', projectCursor: 0 })
+              await loadProjects($)
+            })()}>
+              {S.project ? (
+                <Text backgroundColor="suggestion" color="inverseText" bold>{` ▸ ${clip(S.project.name, 30)} `}</Text>
+              ) : (
+                <Text color="subtle" bold>{' ▸ My work '}</Text>
+              )}
+            </Button>
             {tabs}
           </Box>
           {statusLine}
@@ -995,7 +1190,7 @@ export function registerTracker(on: On): void {
             </Box>
           )}
           {rule(els, width)}
-          {keyBar([nav, findKeys, actKeys, misc])}
+          {keyBar([nav, findKeys, projKeys, actKeys, misc])}
         </Box>
       )
     })

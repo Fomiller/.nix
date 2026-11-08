@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import { adfToMarkdown, markdownToAdf } from './adf'
-import type { Meta, StatusType, Ticket, TicketDetail, Transition } from './core'
+import type { Meta, Project, StatusType, Ticket, TicketDetail, Transition } from './core'
 
 const SPRINT_FIELD = 'customfield_10020'
 
@@ -57,6 +57,7 @@ export const readTools = [
   'getTransitionsForJiraIssue',
   'getAccessibleAtlassianResources',
   'atlassianUserInfo',
+  'getVisibleJiraProjects',
 ]
 
 let background = false
@@ -439,4 +440,34 @@ export async function assignToMe($: EngineInterface, t: Ticket): Promise<void> {
   const { cloudId } = await site($)
   const self = await mcpMyself($)
   await mcp($, 'editJiraIssue', { cloudId, issueIdOrKey: t.key, fields: { assignee: { accountId: self.accountId } } })
+}
+
+type RawProject = { id?: string; key: string; name: string; archived?: boolean }
+
+function projectsOf(raw: unknown): RawProject[] {
+  const r = raw as { values?: RawProject[]; projects?: RawProject[] } | RawProject[]
+  if (Array.isArray(r)) return r
+  return r?.values ?? r?.projects ?? []
+}
+
+export async function projects($: EngineInterface): Promise<Project[]> {
+  let raw: unknown
+  if (await useMcp($)) {
+    const { cloudId } = await site($)
+    raw = await mcp<unknown>($, 'getVisibleJiraProjects', { cloudId })
+  } else {
+    raw = await api<unknown>($, '/rest/api/3/project/search?maxResults=100&orderBy=name')
+  }
+  return projectsOf(raw)
+    .filter(pr => pr?.key && !pr.archived)
+    .map(pr => ({ id: pr.key, name: pr.name }))
+}
+
+export function projectJql(key: string): string {
+  return `project = "${key.replace(/"/g, '\\"')}" AND (statusCategory != Done OR resolved >= -14d) ORDER BY updated DESC`
+}
+
+export async function projectIssues($: EngineInterface, project: Project): Promise<Ticket[]> {
+  const jql = projectJql(project.id)
+  return (await useMcp($)) ? mcpSearch($, jql, 100) : searchJql($, jql, 100)
 }

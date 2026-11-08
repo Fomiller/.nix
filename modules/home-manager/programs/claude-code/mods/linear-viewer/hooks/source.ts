@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Meta, StatusType, Ticket, TicketDetail, Transition } from './core'
+import type { Meta, Project, StatusType, Ticket, TicketDetail, Transition } from './core'
 
 const API = 'https://api.linear.app/graphql'
 
@@ -68,7 +68,7 @@ let meCache: { id: string; name: string } | null = null
 let mcpMe: { id: string; name: string } | null = null
 let mcpTools: string[] = []
 
-export const readTools = ['list_issues', 'get_issue', 'list_comments', 'list_issue_statuses', 'whoami']
+export const readTools = ['list_issues', 'get_issue', 'list_comments', 'list_issue_statuses', 'list_projects', 'whoami']
 
 let background = false
 const blocked = new Set<string>()
@@ -492,4 +492,56 @@ export async function comment($: EngineInterface, t: Ticket, body: string): Prom
 export async function assignToMe($: EngineInterface, t: Ticket): Promise<void> {
   if (!(await useMcp($))) return keyAssignToMe($, t)
   await mcp($, 'save_issue', { id: t.key, assignee: 'me' })
+}
+
+const PROJECTS = `query($after: String) {
+  projects(first: 100, after: $after) { nodes { id name state } pageInfo { hasNextPage endCursor } }
+}`
+
+const PROJECT_ISSUES = `query($id: ID!, $since: DateTimeOrDuration!) {
+  viewer { id }
+  issues(first: 150, orderBy: updatedAt, filter: { project: { id: { eq: $id } }, or: [
+    { state: { type: { nin: ["completed", "canceled"] } } },
+    { completedAt: { gt: $since } }
+  ] }) { nodes { ${FIELDS} } }
+}`
+
+export async function projects($: EngineInterface): Promise<Project[]> {
+  const isDone = (t: string | undefined) => t === 'completed' || t === 'canceled'
+  const out: Project[] = []
+  if (await useMcp($)) {
+    let cursor: string | undefined
+    for (let page = 0; page < 4; page++) {
+      const d = await mcp<{ projects: { id: string; name: string; status?: { type?: string } | null }[]; hasNextPage?: boolean; cursor?: string }>(
+        $,
+        'list_projects',
+        { fields: ['id', 'name', 'status'], limit: 50, ...(cursor ? { cursor } : {}) },
+      )
+      for (const pr of d.projects ?? []) if (!isDone(pr.status?.type)) out.push({ id: pr.id, name: pr.name })
+      if (!d.hasNextPage || !d.cursor) break
+      cursor = d.cursor
+    }
+    return out
+  }
+  let after: string | null = null
+  for (let page = 0; page < 4; page++) {
+    const d: { projects: { nodes: { id: string; name: string; state: string }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } =
+      await gql($, PROJECTS, { after })
+    for (const pr of d.projects.nodes) if (!isDone(pr.state)) out.push({ id: pr.id, name: pr.name })
+    if (!d.projects.pageInfo.hasNextPage) break
+    after = d.projects.pageInfo.endCursor
+  }
+  return out
+}
+
+export async function projectIssues($: EngineInterface, project: Project): Promise<Ticket[]> {
+  if (await useMcp($)) {
+    const batches = await Promise.all([
+      ...OPEN_TYPES.map(state => mcpIssues($, { project: project.id, state }, 3)),
+      mcpIssues($, { project: project.id, completedAt: '-P14D' }, 1),
+    ])
+    return [...new Map(batches.flat().map(t => [t.key, t])).values()]
+  }
+  const d = await gql<{ viewer: { id: string }; issues: { nodes: Node[] } }>($, PROJECT_ISSUES, { id: project.id, since: '-P14D' })
+  return d.issues.nodes.map(n => toTicket(n, d.viewer.id))
 }

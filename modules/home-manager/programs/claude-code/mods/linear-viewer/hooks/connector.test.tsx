@@ -74,7 +74,7 @@ function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () 
     return { value: saved.text }
   })
   on('tool.list', () => ({
-    value: ['list_issues', 'get_issue', 'list_comments', 'list_issue_statuses', 'save_issue', 'save_comment', 'whoami'].map(n => ({ name: `${P}${n}` })) as never,
+    value: ['list_projects', 'list_issues', 'get_issue', 'list_comments', 'list_issue_statuses', 'save_issue', 'save_comment', 'whoami'].map(n => ({ name: `${P}${n}` })) as never,
   }))
   on('tool.call', (_, e) => {
     const { tool, tool_use_id: _id, ...args } = e as unknown as { tool: string; tool_use_id?: string } & Record<string, unknown>
@@ -83,7 +83,14 @@ function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () 
     let out: unknown = { ok: true }
     if (name === 'whoami') out = { user: { id: ME, name: 'Forrest Miller', displayName: 'forrestmillerj' } }
     else if (name === 'list_issues') {
-      out = { issues: args.creator === 'me' ? [] : issues(), hasNextPage: false }
+      out = {
+        issues: args.creator === 'me'
+          ? []
+          : args.project
+            ? [issue(30, `Team ticket in ${args.project}`, { assignee: 'Pat', assigneeId: 'u-pat', project: 'Fomiller', status: 'In Progress', statusType: 'started' })]
+            : issues(),
+        hasNextPage: false,
+      }
       if (oversized && args.state === 'started') {
         saved.text = JSON.stringify([{ type: 'text', text: JSON.stringify(out) }])
         const text = 'Error: result (100,919 characters across 1 line) exceeds maximum allowed tokens. Output has been saved to /Users/forrest/.claude/projects/x/tool-results/mcp-list_issues-1.txt.'
@@ -92,6 +99,14 @@ function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () 
     }
     else if (name === 'get_issue') out = { id: args.id, description: 'Built from <issue id="x" label="FOM-269" href="https://linear.app/fomiller/issue/FOM-269" />.' }
     else if (name === 'list_comments') out = { comments: comments(), hasNextPage: false }
+    else if (name === 'list_projects') out = {
+      projects: [
+        { id: 'P-FOM-7', name: 'AWS Infrastructure', status: { type: 'started' } },
+        { id: 'P-FOM-8', name: 'Fomiller', status: { type: 'started' } },
+        { id: 'P-FOM-2', name: 'Old thing', status: { type: 'completed' } },
+      ],
+      hasNextPage: false,
+    }
     else if (name === 'list_issue_statuses') out = [
       { id: 'st-review', type: 'started', name: 'In Review' },
       { id: 'st-prog', type: 'started', name: 'In Progress' },
@@ -187,4 +202,35 @@ test('a result too big for one MCP answer is read from the file Claude Code save
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Button', key: 'FOM-7' })).toBeTruthy()
   await ui.unmount()
+})
+
+test('switch between projects with the picker, n and b, and the command', async ($, on) => {
+  const { calls } = engine(on, () => [issue(1, 'Set up attic')])
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run(run('refresh'))
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('My work')
+
+  await ui.press({ key: 'key-p' })
+  expect(await ui.find({ type: 'Button', key: 'project-P-FOM-7' })).toBeTruthy()
+  expect(await ui.find({ type: 'Button', key: 'project-P-FOM-2' })).toBeFalsy()
+  calls.length = 0
+  await ui.press({ key: 'project-P-FOM-8' })
+  expect(calls.filter(c => c.tool.endsWith('list_issues')).every(c => c.args.project === 'P-FOM-8')).toBe(true)
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('Fomiller')
+  expect((await ui.find({ type: 'Button', key: 'view-all' }))?.text).toContain('All 1')
+  expect((await ui.find({ type: 'Button', key: 'FOM-30' }))?.text).toContain('@Pat')
+  expect(await ui.find({ type: 'Button', key: 'FOM-1' })).toBeFalsy()
+
+  await ui.press({ key: 'key-n' })
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('My work')
+  await ui.press({ key: 'key-b' })
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('Fomiller')
+  await ui.press({ key: 'key-b' })
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('AWS')
+  await ui.unmount()
+
+  expect((await $.command.run(run('project fomil'))).text).toBe('Showing Fomiller: 1 ticket(s).')
+  expect((await $.command.run(run('project mine'))).text).toBe('Showing your own tickets.')
+  expect((await $.command.run(run('project nope'))).text).toBe('No open project matches "nope".')
 })

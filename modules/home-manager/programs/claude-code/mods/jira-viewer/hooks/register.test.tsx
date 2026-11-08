@@ -72,9 +72,12 @@ function engine(on: On, env: Record<string, string>, issues: () => unknown[]) {
     const path = e.url.replace('https://acme.atlassian.net', '')
     let out: unknown = {}
     if (path === '/rest/api/3/myself') out = ME
+    else if (path.startsWith('/rest/api/3/project/search')) out = { values: [{ id: '1', key: 'DO', name: 'SRE' }, { id: '2', key: 'OLD', name: 'Old', archived: true }] }
     else if (path === '/rest/api/3/search/jql') {
       out = String(body?.jql).startsWith('(assignee = currentUser()')
         ? { issues: issues() }
+        : String(body?.jql).startsWith('project = "DO"')
+          ? { issues: [issue(90, 'Team ticket', { assignee: { accountId: 'a-pat', displayName: 'Pat Smith' } })] }
         : { issues: [issue(77, 'pat ticket', { assignee: { accountId: 'a-pat', displayName: 'Pat Smith' } })] }
     } else if (path.includes('?fields=description,comment')) {
       out = {
@@ -194,4 +197,17 @@ test('ADF tables, code and marks convert to Markdown', () => {
       ],
     }),
   ).toBe('run `just switch` **now**\n\n```sh\nls -la\n```\n\n| Host |\n| --- |\n| nimbus |')
+})
+
+test('/jira project scopes the pane to one project', async ($, on) => {
+  const { reqs } = engine(on, ENV, () => [issue(1, 'Egress observability')])
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run(run('refresh'))
+  expect((await $.command.run(run('project do'))).text).toBe('Showing SRE: 1 ticket(s).')
+  const q = reqs.filter(r => r.url.endsWith('/search/jql')).pop()
+  expect((q?.body as { jql: string }).jql).toBe('project = "DO" AND (statusCategory != Done OR resolved >= -14d) ORDER BY updated DESC')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Button', key: 'DO-90' }))?.text).toContain('@Pat')
+  expect((await ui.find({ type: 'Button', key: 'project-chip' }))?.text).toContain('SRE')
+  await ui.unmount()
 })
