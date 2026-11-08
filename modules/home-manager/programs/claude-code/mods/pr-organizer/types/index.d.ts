@@ -50,10 +50,13 @@ export type TimelineItem = {
   path?: string
   line?: number | null
   isResolved?: boolean
+  diff?: string
   replies?: { author: string; at: string; body: string }[]
 }
 
 export type Detail = { url: string; items: TimelineItem[] } | null
+
+export type Expanded = string[]
 
 export type EventKind =
   | 'approved'
@@ -107,6 +110,7 @@ declare module 'claude-code' {
       searchQuery: string
       searchResults: Shaped<Pr[]>
       isSearching: boolean
+      expanded: string[]
     }
   }
 }

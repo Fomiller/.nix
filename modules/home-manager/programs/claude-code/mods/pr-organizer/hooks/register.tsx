@@ -15,9 +15,7 @@ import {
 import type { ListData } from './github'
 import {
   ago,
-  badge,
   changesOf,
-  ciMark,
   clip,
   groupOf,
   isRemoteQuery,
@@ -31,6 +29,7 @@ import {
   VIEWS,
 } from './model'
 import type { Row } from './model'
+import { bodyOf, chip, commentCard, groupRowText, prHeader, prRowText, rule } from './ui'
 
 const prsA = atom({ plugin: 'pr-organizer', key: 'prs' } as const, [], { shape: 'prs-2' })
 const viewA = atom({ plugin: 'pr-organizer', key: 'view' } as const, 'open')
@@ -59,6 +58,7 @@ const searchResultsA = atom({ plugin: 'pr-organizer', key: 'searchResults' } as 
   shape: 'search-1',
 })
 const searchingA = atom({ plugin: 'pr-organizer', key: 'isSearching' } as const, false)
+const expandedA = atom({ plugin: 'pr-organizer', key: 'expanded' } as const, [])
 
 type Dollar = EngineInterface
 
@@ -387,25 +387,6 @@ async function openPane($: Dollar) {
   await $.ui.open({ id: PANE, title: 'PRs', focus: true })
 }
 
-function itemHeader(item: TimelineItem, now: number): string {
-  const when = item.at ? `${ago(item.at, now)} ago` : ''
-  switch (item.kind) {
-    case 'description':
-      return `${item.author} · description`
-    case 'review':
-      return `${item.author} · ${(item.state ?? 'reviewed').toLowerCase().replace('_', ' ')} · ${when}`
-    case 'thread':
-      return `${item.author} · ${item.path}${item.line ? `:${item.line}` : ''}${item.isResolved ? ' · resolved' : ''} · ${when}`
-    default:
-      return `${item.author} · ${when}`
-  }
-}
-
-function clipBody(body: string, lines: number): string {
-  const all = body.trim().split('\n')
-  return all.length <= lines ? all.join('\n') : `${all.slice(0, lines).join('\n')}\n…`
-}
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -628,7 +609,8 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Input, Link, Markdown } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Text, Button, Input, Markdown } = els
     const width = Math.max(30, e.props.bodyColumns)
     const height = Math.max(12, e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30)
     const now = Date.now()
@@ -653,23 +635,29 @@ export const register: Register = on => {
     const searchQuery = await read($, searchQueryA)
     const searchResults = await read($, searchResultsA)
     const isSearching = await read($, searchingA)
+    const expanded = await read($, expandedA)
 
     const current = VIEWS.find(v => v.value === view) ?? VIEWS[0]!
     const rows = rowsOf(shownPrs(view, prs, searchResults, filter, groups), groupBy, groups, collapsed)
     const pr = prs.find(p => p.url === selected) ?? searchResults.find(p => p.url === selected) ?? null
-    const rule = <Text dimColor>{'─'.repeat(Math.max(10, width - 1))}</Text>
     const isAsking = (action: string) => pr !== null && confirm === `${action}:${pr.url}`
+    const groupName = (p: Pr) => groups[p.url] ?? ticketOf(p) ?? UNGROUPED
 
     const key = (k: string, label: string, run: () => unknown, color?: string) => (
       <Button key={`key-${k}`} plain hotkey={k} onPress={() => void run()}>
-        {color ? <Text color={color} bold>{label}</Text> : label}
+        {color ? <Text color={color} bold>{label}</Text> : <Text color="subtle">{label}</Text>}
       </Button>
+    )
+    const keyBar = (groupsOfKeys: ReturnType<typeof key>[][]) => (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+        {groupsOfKeys.filter(g => g.length > 0).flatMap((g, i) => (i === 0 ? g : [<Text color="promptBorder">│</Text>, ...g]))}
+      </Box>
     )
 
     const statusLine = (
       <Box flexDirection="row" columnGap={1}>
-        {(isLoading || isSearching) && <Text color="warning">{isSearching ? 'searching…' : 'loading…'}</Text>}
-        {status && <Text color={status.isError ? 'error' : 'subtle'}>{clip(status.text, width - 12)}</Text>}
+        {(isLoading || isSearching) && chip(els, isSearching ? 'searching' : 'loading', 'warning')}
+        {status && <Text color={status.isError ? 'error' : 'subtle'}>{clip(status.text, width - 14)}</Text>}
         {!isLoading && !isSearching && !status && (
           <Text dimColor>
             {fetchedAt ? `updated ${ago(new Date(fetchedAt).toISOString(), now)} ago` : 'not loaded'}
@@ -683,22 +671,26 @@ export const register: Register = on => {
     if (prompting === 'search') {
       const isGithub = view === 'search'
       return (
-        <Box flexDirection="column">
-          <Text bold>{isGithub ? 'Search GitHub' : `Find in ${current.label}`}</Text>
+        <Box flexDirection="column" rowGap={1}>
+          <Box flexDirection="row" columnGap={1}>
+            {chip(els, isGithub ? 'Search GitHub' : `Find in ${current.label}`, 'claude')}
+          </Box>
           <Text dimColor>
             {isGithub
               ? 'GitHub search syntax: author:pat repo:acme/api label:bug is:merged, plus free text.'
               : 'Words filter this view by title, repo, branch, author, ticket, group and labels. A qualifier like author:pat searches GitHub instead.'}
           </Text>
-          <Input
-            key="input-search"
-            label="/"
-            value={isGithub ? searchQuery : filter}
-            placeholder={isGithub ? 'author:pat is:open' : 'login, TICKETA-1, author:pat'}
-            submitLabel="search"
-            autoFocus
-            onSubmit={v => void applySearch($, v)}
-          />
+          <Box borderStyle="round" borderColor="claude" paddingX={1}>
+            <Input
+              key="input-search"
+              label="/"
+              value={isGithub ? searchQuery : filter}
+              placeholder={isGithub ? 'author:pat is:open' : 'login, TICKETA-1, author:pat'}
+              submitLabel="search"
+              autoFocus
+              onSubmit={v => void applySearch($, v)}
+            />
+          </Box>
           <Button key="input-cancel" label="Cancel" onPress={() => void update($, promptingA, () => null)} />
         </Box>
       )
@@ -708,7 +700,7 @@ export const register: Register = on => {
       const fields: Record<Exclude<Prompting, null | 'search'>, { label: string; placeholder: string; submit: (v: string) => void }> = {
         comment: {
           label: 'Comment',
-          placeholder: 'Write a comment, Enter to post',
+          placeholder: 'Markdown is fine. Enter posts.',
           submit: v => {
             if (v.trim()) void gh($, 'Comment', ['pr', 'comment', pr.url, '--body', v])
           },
@@ -723,7 +715,7 @@ export const register: Register = on => {
         },
         group: {
           label: 'Group',
-          placeholder: groups[pr.url] ?? ticketOf(pr) ?? 'e.g. PROJ-12 or auth rewrite',
+          placeholder: groupName(pr),
           submit: v => {
             void setGroup($, [pr.url], v)
             void update($, promptingA, () => null)
@@ -732,46 +724,52 @@ export const register: Register = on => {
       }
       const field = fields[prompting]
       return (
-        <Box flexDirection="column">
-          <Text bold>{clip(`${shortRef(pr)} ${pr.title}`, width)}</Text>
-          <Input
-            key={`input-${prompting}`}
-            label={field.label}
-            placeholder={field.placeholder}
-            rows={prompting === 'comment' ? 4 : 1}
-            autoFocus
-            onSubmit={v => field.submit(v)}
-          />
+        <Box flexDirection="column" rowGap={1}>
+          {prHeader(els, pr, { width, now, group: groupName(pr) })}
+          <Box borderStyle="round" borderColor="claude" paddingX={1}>
+            <Input
+              key={`input-${prompting}`}
+              label={field.label}
+              placeholder={field.placeholder}
+              rows={prompting === 'comment' ? 5 : 1}
+              autoFocus
+              onSubmit={v => field.submit(v)}
+            />
+          </Box>
           <Button key="input-cancel" label="Cancel" onPress={() => void update($, promptingA, () => null)} />
         </Box>
       )
     }
 
     if (mode === 'detail' && pr) {
-      const b = badge(pr)
-      const ci = ciMark(pr)
       const isOpen = pr.state === 'OPEN'
       const all = detail?.url === pr.url ? detail.items : null
       const description = all?.find(i => i.kind === 'description') ?? null
       const items = all?.filter(i => i.kind !== 'description') ?? null
-      const perItem = 8
-      const room = Math.max(1, Math.floor((height - 12) / perItem))
-      const offset = Math.min(detailOffset, Math.max(0, (items?.length ?? 1) - 1))
-      const shown = items?.slice(offset, offset + room) ?? []
+      const blocks: { id: string; item: TimelineItem }[] = [
+        ...(description ? [{ id: `${pr.url}#desc`, item: description }] : []),
+        ...(items ?? []).map((item, i) => ({ id: `${pr.url}#${item.kind}-${item.at}-${i}`, item })),
+      ]
+      const offset = Math.min(detailOffset, Math.max(0, blocks.length - 1))
+      const top = blocks[offset]
+      const room = Math.max(1, Math.floor((height - 14) / 9))
+      const shown = blocks.slice(offset, offset + room)
 
-      const actions = [
+      const nav = [
         key('h', 'back', () => update($, modeA, () => 'list')),
-        key('j', 'down', () => update($, detailOffsetA, o => Math.min(o + 1, Math.max(0, (items?.length ?? 1) - 1)))),
+        key('j', 'down', () => update($, detailOffsetA, o => Math.min(o + 1, Math.max(0, blocks.length - 1)))),
         key('k', 'up', () => update($, detailOffsetA, o => Math.max(0, o - 1))),
         key('g', 'top', () => update($, detailOffsetA, () => 0)),
-        key('n', 'next PR', () => stepPr($, 1)),
-        key('p', 'prev PR', () => stepPr($, -1)),
-        key('o', 'browser', () => openInBrowser($, pr.url)),
-        key('c', 'comment', () => update($, promptingA, () => 'comment')),
+        key('z', top && expanded.includes(top.id) ? 'shrink' : 'expand', () => {
+          if (top) return update($, expandedA, x => (x.includes(top.id) ? x.filter(i => i !== top.id) : [...x, top.id]))
+        }),
+        key('n', 'next', () => stepPr($, 1)),
+        key('p', 'prev', () => stepPr($, -1)),
       ]
+      const act = [key('c', 'comment', () => update($, promptingA, () => 'comment'))]
       if (isOpen && pr.isMine) {
-        actions.push(
-          key('m', isAsking('merge') ? 'm again to merge' : 'merge', () =>
+        act.push(
+          key('m', isAsking('merge') ? 'again to merge' : 'merge', () =>
             confirmOr($, 'merge', pr.url, () => gh($, 'Merge', ['pr', 'merge', pr.url, '--squash', '--delete-branch'])),
             isAsking('merge') ? 'warning' : undefined,
           ),
@@ -781,110 +779,65 @@ export const register: Register = on => {
             : key('y', 'to draft', () => gh($, 'Convert to draft', ['pr', 'ready', pr.url, '--undo'])),
           key('b', 'update branch', () => gh($, 'Update branch', ['pr', 'update-branch', pr.url])),
           key('v', 'reviewers', () => update($, promptingA, () => 'reviewers')),
-          key('x', isAsking('close') ? 'x again to close' : 'close', () =>
+          key('x', isAsking('close') ? 'again to close' : 'close', () =>
             confirmOr($, 'close', pr.url, () => gh($, 'Close', ['pr', 'close', pr.url])),
             isAsking('close') ? 'warning' : undefined,
           ),
         )
       }
       if (isOpen && pr.isReviewRequested) {
-        actions.push(
-          key('a', isAsking('approve') ? 'a again to approve' : 'approve', () =>
+        act.push(
+          key('a', isAsking('approve') ? 'again to approve' : 'approve', () =>
             confirmOr($, 'approve', pr.url, () => gh($, 'Approve', ['pr', 'review', pr.url, '--approve'])),
             isAsking('approve') ? 'warning' : undefined,
           ),
         )
       }
-      actions.push(
-        key('s', 'set group', () => update($, promptingA, () => 'group')),
+      const misc = [
+        key('s', 'group', () => update($, promptingA, () => 'group')),
         key('i', 'ask Claude', () => askClaude($, pr)),
+        key('o', 'browser', () => openInBrowser($, pr.url)),
         key('r', 'refresh', async () => {
           await refresh($)
           await fetchDetail($, pr.url, { force: true })
         }),
         key('q', 'quit', () => $.ui.close({ id: PANE })),
-      )
+      ]
 
       return (
         <Box flexDirection="column">
-          <Text bold color="claude">{clip(pr.title, width)}</Text>
-          <Box flexDirection="row" columnGap={1}>
-            <Link href={pr.url} label={`${pr.repo}#${pr.number}`} />
-            <Text color={b.color}>{b.text}</Text>
-            <Text color={ci.color}>CI {(pr.ci ?? 'none').toLowerCase()}</Text>
-            {pr.mergeable === 'CONFLICTING' && <Text color="error">conflicts</Text>}
+          <Box borderStyle="round" borderColor="claude" paddingX={1} flexDirection="column">
+            {prHeader(els, pr, { width: width - 4, now, group: groupName(pr) })}
           </Box>
-          <Text dimColor>
-            {clip(`${pr.headRef} → ${pr.baseRef} · by ${pr.author} · ${ago(pr.updatedAt, now)} ago · group ${groups[pr.url] ?? ticketOf(pr) ?? UNGROUPED}`, width)}
-          </Text>
-          {pr.reviewers.length > 0 && <Text dimColor>{clip(`waiting on: ${pr.reviewers.join(', ')}`, width)}</Text>}
           {statusLine}
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            {actions}
-          </Box>
-          {rule}
-          {description && offset === 0 && (
-            <Box flexDirection="column" marginBottom={1}>
-              <Markdown text={clipBody(description.body, 10)} />
-            </Box>
+          {keyBar([nav, act, misc])}
+          {rule(els, width, all === null ? 'loading conversation' : `conversation · ${items?.length ?? 0} comment${items?.length === 1 ? '' : 's'}${blocks.length ? ` · ${offset + 1}/${blocks.length}` : ''}`)}
+          {all !== null && blocks.length === 0 && <Text dimColor>No description or comments yet.</Text>}
+          {shown.map(({ id, item }) =>
+            item.kind === 'description' ? (
+              <Box key={id} flexDirection="column" paddingX={1}>
+                <Markdown text={bodyOf(item.body, expanded.includes(id) ? 400 : 14).text} />
+                {!expanded.includes(id) && bodyOf(item.body, 14).isCut && <Text dimColor>… z shows the whole description</Text>}
+              </Box>
+            ) : (
+              commentCard(els, item, { key: id, width, now, lines: 8, isExpanded: expanded.includes(id) })
+            ),
           )}
-          <Text dimColor>
-            {items === null
-              ? 'Loading comments…'
-              : items.length === 0
-                ? 'No comments yet.'
-                : `Conversation, newest first · ${offset + 1}-${Math.min(items.length, offset + room)} of ${items.length}`}
-          </Text>
-          {shown.map((item, i) => (
-            <Box key={`item-${offset + i}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-              <Text color={item.state === 'APPROVED' ? 'success' : item.state === 'CHANGES_REQUESTED' ? 'error' : 'claude'}>
-                {clip(itemHeader(item, now), width - 4)}
-              </Text>
-              {item.body.trim() !== '' && <Markdown text={clipBody(item.body, perItem - 3)} />}
-              {(item.replies ?? []).map(r => (
-                <Text dimColor>{clip(`↳ ${r.author}: ${firstLine(r.body)}`, width - 4)}</Text>
-              ))}
-            </Box>
-          ))}
-          {items !== null && offset + room < items.length && (
-            <Text dimColor>↓ {items.length - offset - room} more (j)</Text>
-          )}
+          {offset + room < blocks.length && <Text dimColor>↓ {blocks.length - offset - room} more · j</Text>}
         </Box>
       )
     }
 
-    const listRoom = Math.max(4, Math.min(rows.length, Math.floor((height - 8) * 0.55)))
+    const isWide = width >= 110
+    const listWidth = isWide ? Math.floor(width * 0.5) : width
+    const listRoom = isWide
+      ? Math.max(4, height - 10)
+      : Math.max(4, Math.min(rows.length, Math.floor((height - 10) * 0.5)))
     const cursor = Math.max(0, rows.findIndex(r => rowId(r) === selected))
     const start = Math.min(Math.max(0, cursor - Math.floor(listRoom / 2)), Math.max(0, rows.length - listRoom))
     const windowed = rows.slice(start, start + listRoom)
     const cursorRow = rows[cursor]
     const cursorPr = cursorRow?.kind === 'pr' ? cursorRow.pr : null
-
-    const previewRoom = Math.max(4, height - listRoom - 12)
-    const previewOf = (url: string) => {
-      if (detail?.url !== url) return <Text dimColor>Loading description and comments…</Text>
-      const desc = detail.items.find(i => i.kind === 'description')
-      const talk = detail.items.filter(i => i.kind !== 'description')
-      const descLines = Math.max(2, previewRoom - Math.min(3, talk.length) * 2 - 1)
-      return (
-        <Box flexDirection="column">
-          {desc ? <Markdown text={clipBody(desc.body, descLines)} /> : <Text dimColor>No description.</Text>}
-          {talk.length > 0 && (
-            <Text dimColor>
-              {talk.length} comment{talk.length === 1 ? '' : 's'}, newest first · l to read all
-            </Text>
-          )}
-          {talk.slice(0, 3).map((item, i) => (
-            <Text key={`peek-${i}`}>
-              <Text color={item.state === 'APPROVED' ? 'success' : item.state === 'CHANGES_REQUESTED' ? 'error' : 'suggestion'}>
-                {clip(itemHeader(item, now), Math.floor(width / 2))}
-              </Text>
-              <Text dimColor>{clip(` ${firstLine(item.body)}`, Math.max(10, width - Math.floor(width / 2) - 2))}</Text>
-            </Text>
-          ))}
-        </Box>
-      )
-    }
 
     const tabs = VIEWS.map((v, i) => {
       const count = v.value === 'search' ? searchResults.length : prs.filter(v.test).length
@@ -902,12 +855,19 @@ export const register: Register = on => {
             })()
           }
         >
-          <Text bold={isOn} inverse={isOn}>{` ${v.label} ${count} `}</Text>
+          {isOn ? (
+            <Text backgroundColor="claude" color="inverseText" bold>{` ${v.label} ${count} `}</Text>
+          ) : (
+            <Text>
+              <Text color={count ? 'text' : 'inactive'}>{v.label}</Text>
+              <Text dimColor>{` ${count}`}</Text>
+            </Text>
+          )}
         </Button>
       )
     })
 
-    const listKeys = [
+    const nav = [
       key('j', 'down', () => moveCursor($, i => i + 1)),
       key('k', 'up', () => moveCursor($, i => i - 1)),
       key('g', 'top', () => moveCursor($, () => 0)),
@@ -928,36 +888,36 @@ export const register: Register = on => {
         await toggleFold($, owner)
         await update($, selectedA, () => `grp:${owner}`)
       }),
+    ]
+    const find = [
+      key('f', 'find', () => update($, promptingA, () => 'search')),
+      ...(filter || (view === 'search' && searchQuery) ? [key('u', 'clear', () => clearSearch($))] : []),
       key('t', groupBy === 'group' ? 'by ticket' : groupBy === 'repo' ? 'by repo' : 'no groups', () =>
         update($, groupByA, g => GROUP_BYS[(GROUP_BYS.indexOf(g) + 1) % GROUP_BYS.length]!),
       ),
-      key('f', 'find', () => update($, promptingA, () => 'search')),
     ]
-    if (filter || (view === 'search' && searchQuery)) {
-      listKeys.push(key('u', 'clear search', () => clearSearch($)))
-    }
+    const act: ReturnType<typeof key>[] = []
     if (cursorPr) {
       const p = cursorPr
-      listKeys.push(key('o', 'browser', () => openInBrowser($, p.url)))
       if (p.isMine && p.state === 'OPEN' && p.review === 'APPROVED') {
-        listKeys.push(
-          key('m', isAsking('merge') ? 'm again to merge' : 'merge', () =>
+        act.push(
+          key('m', isAsking('merge') ? 'again to merge' : 'merge', () =>
             confirmOr($, 'merge', p.url, () => gh($, 'Merge', ['pr', 'merge', p.url, '--squash', '--delete-branch'])),
             isAsking('merge') ? 'warning' : undefined,
           ),
         )
       }
       if (p.isReviewRequested && p.state === 'OPEN') {
-        listKeys.push(
-          key('a', isAsking('approve') ? 'a again to approve' : 'approve', () =>
+        act.push(
+          key('a', isAsking('approve') ? 'again to approve' : 'approve', () =>
             confirmOr($, 'approve', p.url, () => gh($, 'Approve', ['pr', 'review', p.url, '--approve'])),
             isAsking('approve') ? 'warning' : undefined,
           ),
         )
       }
-      listKeys.push(key('i', 'ask Claude', () => askClaude($, p)))
+      act.push(key('o', 'browser', () => openInBrowser($, p.url)), key('i', 'ask Claude', () => askClaude($, p)))
     }
-    listKeys.push(
+    const misc = [
       key('c', 'Claude groups', () =>
         $.prompt.submit({
           text: `Group my pull requests by related work. Use ${MODEL_TOOLS}: list them, work out which ones belong to the same piece of work (shared ticket keys, branch names, titles, repos that change together), and put each cluster in a short descriptive group. Leave PRs that already sit in a sensible ticket group alone. Tell me the groups you made.`,
@@ -965,22 +925,10 @@ export const register: Register = on => {
       ),
       key('r', 'refresh', () => refresh($)),
       key('q', 'quit', () => $.ui.close({ id: PANE })),
-    )
+    ]
 
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" flexWrap="wrap">
-          {tabs}
-        </Box>
-        {statusLine}
-        {(filter || (view === 'search' && searchQuery)) && (
-          <Text>
-            <Text color="suggestion">/ </Text>
-            {view === 'search' ? searchQuery : filter}
-            <Text dimColor> · u clears</Text>
-          </Text>
-        )}
-        {rule}
+    const list = (
+      <Box flexDirection="column" width={isWide ? listWidth : undefined}>
         {view !== 'search' && prs.length === 0 && !isLoading && <Text dimColor>No PRs loaded yet. Press r.</Text>}
         {view === 'search' && !searchQuery && (
           <Text dimColor>Press f and search GitHub, e.g. author:pat is:open or repo:acme/api label:bug.</Text>
@@ -988,63 +936,92 @@ export const register: Register = on => {
         {(view !== 'search' ? prs.length > 0 : searchQuery !== '') && rows.length === 0 && !isSearching && (
           <Text dimColor>{filter ? `Nothing in ${current.label} matches "${filter}".` : `Nothing in ${current.label}.`}</Text>
         )}
-        {start > 0 && <Text dimColor>↑ {start} more</Text>}
+        {start > 0 && <Text dimColor>  ↑ {start} more</Text>}
         {windowed.map(row => {
           const id = rowId(row)
-          const isCursor = id === rowId(cursorRow ?? row) && cursorRow !== undefined
+          const isCursor = cursorRow !== undefined && id === rowId(cursorRow)
           if (row.kind === 'group') {
-            const isFolded = collapsed.includes(row.name)
             return (
               <Button key={id} plain onPress={() => void (async () => {
                 await update($, selectedA, () => id)
                 await toggleFold($, row.name)
               })()}>
-                <Text inverse={isCursor}>{isFolded ? '▸ ' : '▾ '}</Text>
-                <Text bold color="claude">{row.name}</Text>
-                <Text dimColor> ({row.count})</Text>
+                {groupRowText(els, row.name, row.count, collapsed.includes(row.name), isCursor, listWidth)}
               </Button>
             )
           }
-          const p = row.pr
-          const b = badge(p)
-          const ci = ciMark(p)
-          const ref = shortRef(p)
-          const who = p.isMine ? '' : `@${p.author}`
-          const titleRoom = Math.max(10, width - ref.length - b.text.length - who.length - 12)
           return (
             <Button key={id} plain onPress={() => void (async () => {
               if (selected === id) await openPr($, id)
-              else await update($, selectedA, () => id)
+              else {
+                await update($, selectedA, () => id)
+                await fetchDetail($, id).catch(() => {})
+              }
             })()}>
-              {isCursor ? '› ' : '  '}
-              <Text color={ci.color}>{ci.text}</Text>{' '}
-              <Text color={b.color}>{b.text}</Text>{' '}
-              <Text dimColor>{ref}</Text>{' '}
-              <Text inverse={isCursor} bold={isCursor}>{clip(p.title, titleRoom)}</Text>
-              {who ? <Text color="suggestion"> {who}</Text> : ''}
+              {prRowText(els, row.pr, isCursor, listWidth, now)}
             </Button>
           )
         })}
-        {start + listRoom < rows.length && <Text dimColor>↓ {rows.length - start - listRoom} more</Text>}
-        {cursorPr && rule}
-        {cursorPr && (
+        {start + listRoom < rows.length && <Text dimColor>  ↓ {rows.length - start - listRoom} more</Text>}
+      </Box>
+    )
+
+    const previewWidth = isWide ? width - listWidth - 5 : width - 4
+    const previewRoom = isWide ? height - 8 : Math.max(6, height - listRoom - 12)
+    const preview = cursorPr && (() => {
+      const loaded = detail?.url === cursorPr.url ? detail.items : null
+      const desc = loaded?.find(i => i.kind === 'description')
+      const talk = loaded?.filter(i => i.kind !== 'description') ?? []
+      const peek = talk.slice(0, isWide ? 3 : 2)
+      const descLines = Math.max(3, previewRoom - 8 - peek.length * 5)
+      return (
+        <Box flexDirection="column" flexGrow={1} borderStyle="round" borderColor="promptBorder" paddingX={1}>
+          {prHeader(els, cursorPr, { width: previewWidth, now, group: groupName(cursorPr) })}
+          {rule(els, previewWidth, 'description')}
+          {loaded === null ? (
+            <Text dimColor>Loading…</Text>
+          ) : desc ? (
+            <Markdown text={bodyOf(desc.body, descLines).text} />
+          ) : (
+            <Text dimColor>No description.</Text>
+          )}
+          {talk.length > 0 && rule(els, previewWidth, `${talk.length} comment${talk.length === 1 ? '' : 's'} · newest · l reads all`)}
+          {peek.map((item, i) =>
+            commentCard(els, item, { key: `peek-${i}`, width: previewWidth, now, lines: 3, showDiff: false }),
+          )}
+        </Box>
+      )
+    })()
+
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+          {chip(els, '⎇ PRs', 'claude')}
+          {tabs}
+        </Box>
+        <Box flexDirection="row" columnGap={1}>
+          {statusLine}
+          {(filter || (view === 'search' && searchQuery)) && (
+            <Text>
+              <Text color="suggestion"> / </Text>
+              <Text bold>{view === 'search' ? searchQuery : filter}</Text>
+            </Text>
+          )}
+        </Box>
+        {rule(els, width)}
+        {isWide ? (
+          <Box flexDirection="row" columnGap={1}>
+            {list}
+            {preview}
+          </Box>
+        ) : (
           <Box flexDirection="column">
-            <Text bold color="claude">{clip(cursorPr.title, width)}</Text>
-            <Box flexDirection="row" columnGap={1}>
-              <Text color={badge(cursorPr).color}>{badge(cursorPr).text}</Text>
-              <Text color={ciMark(cursorPr).color}>CI {(cursorPr.ci ?? 'none').toLowerCase()}</Text>
-              {cursorPr.mergeable === 'CONFLICTING' && <Text color="error">conflicts</Text>}
-              <Text dimColor>
-                {clip(`${cursorPr.headRef} → ${cursorPr.baseRef} · @${cursorPr.author} · ${ago(cursorPr.updatedAt, now)} ago${cursorPr.reviewers.length ? ` · waiting on ${cursorPr.reviewers.join(', ')}` : ''}`, Math.max(20, width - 30))}
-              </Text>
-            </Box>
-            {previewOf(cursorPr.url)}
+            {list}
+            {preview}
           </Box>
         )}
-        {rule}
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {listKeys}
-        </Box>
+        {rule(els, width)}
+        {keyBar([nav, find, act, misc])}
       </Box>
     )
   })

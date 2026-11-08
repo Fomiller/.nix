@@ -43,7 +43,8 @@ PR conversation:
 | Key | Action |
 | --- | --- |
 | `h` | back to the list |
-| `j` / `k` / `g` | scroll comments, reviews and inline threads |
+| `j` / `k` / `g` | scroll the description, comments, reviews and inline threads |
+| `z` | show the whole comment at the top, or shrink it again |
 | `n` / `p` | next / previous PR |
 | `m` | squash-merge and delete the branch (press twice) |
 | `w` | enable auto-merge |
@@ -56,7 +57,9 @@ PR conversation:
 | `s` | set group |
 | `o` / `i` / `r` / `q` | browser / ask Claude / refresh / close |
 
-The list shows the highlighted PR's status, description and latest comments underneath it.
+The list shows the highlighted PR's status, labels, description and latest comments. The preview sits beside the list when the pane is at least 110 columns wide, and under it otherwise. Descriptions and comments render as Markdown. Inline review threads show the code they are about as a diff.
+
+Colors come from your Claude Code theme, so they work inside tmux without truecolor.
 
 ## Search
 

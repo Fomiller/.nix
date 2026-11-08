@@ -33,7 +33,7 @@ export const DETAIL_QUERY = `query($url: URI!) {
     reviews(last: 30) { nodes { author { login } state body submittedAt } }
     reviewThreads(last: 50) { nodes {
       isResolved path line
-      comments(first: 20) { nodes { author { login } body createdAt } }
+      comments(first: 20) { nodes { author { login } body createdAt diffHunk } }
     } }
   } }
 }`
@@ -145,7 +145,7 @@ type DetailNode = {
       isResolved: boolean
       path: string
       line: number | null
-      comments: { nodes: { author: Login; body: string; createdAt: string }[] }
+      comments: { nodes: { author: Login; body: string; createdAt: string; diffHunk?: string }[] }
     }[]
   }
 }
@@ -177,6 +177,7 @@ export function toTimeline(d: DetailNode): TimelineItem[] {
       path: t.path,
       line: t.line,
       isResolved: t.isResolved,
+      diff: first.diffHunk ? trimHunk(first.diffHunk, 8) : undefined,
       replies: rest.map(c => ({ author: who(c.author), at: c.createdAt, body: c.body })),
     })
   }
@@ -185,6 +186,23 @@ export function toTimeline(d: DetailNode): TimelineItem[] {
     items.push({ kind: 'description', author: who(d.author), at: d.createdAt, body: d.body })
   }
   return items
+}
+
+export function trimHunk(hunk: string, keep: number): string {
+  const [header, ...lines] = hunk.replace(/\n$/, '').split('\n')
+  const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(header ?? '')
+  if (!m || lines.length <= keep) return hunk
+  const dropped = lines.slice(0, lines.length - keep)
+  const kept = lines.slice(lines.length - keep)
+  const counts = (ls: string[]) => ({
+    old: ls.filter(l => !l.startsWith('+')).length,
+    new: ls.filter(l => !l.startsWith('-')).length,
+  })
+  const skip = counts(dropped)
+  const size = counts(kept)
+  const oldStart = Number(m[1]) + skip.old
+  const newStart = Number(m[2]) + skip.new
+  return [`@@ -${oldStart},${size.old} +${newStart},${size.new} @@${m[3] ?? ''}`, ...kept].join('\n')
 }
 
 export function firstLine(text: string): string {

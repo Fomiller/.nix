@@ -153,14 +153,17 @@ test('vim keys move the cursor, open the conversation and merge after a confirm'
     await ui.press({ key: 'key-g' })
     await ui.press({ key: 'key-j' })
     await ui.press({ key: 'key-j' })
-    expect((await ui.find({ type: 'Button', key: URL1 }))?.text).toContain('›')
+    expect((await ui.find({ type: 'Button', key: URL1 }))?.text).toContain('▌')
     await ui.press({ key: 'key-k' })
-    expect((await ui.find({ type: 'Button', key: URL1 }))?.text).not.toContain('›')
+    expect((await ui.find({ type: 'Button', key: URL1 }))?.text).not.toContain('▌')
     await ui.press({ key: 'key-j' })
 
     await ui.press({ key: 'key-l' })
+    expect(await ui.find({ type: 'Markdown', text: /Adds the login endpoint/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Markdown', text: /Ship it/ })).toBeTruthy()
+    await ui.press({ key: 'key-j' })
     expect(await ui.find({ type: 'Text', text: /api\/login\.go:12/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /sam · approved/ })).toBeTruthy()
+    await ui.press({ key: 'key-g' })
 
     ran.length = 0
     await ui.press({ key: 'key-m' })
@@ -206,7 +209,7 @@ test('the model can regroup PRs', async ($, on) => {
   await $.command.run(refreshArgs)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Button', key: 'grp:Billing' }))?.text).toContain('(2)')
+  expect((await ui.find({ type: 'Button', key: 'grp:Billing' }))?.text).toContain('Billing 2')
   await ui.unmount()
 })
 
@@ -217,7 +220,7 @@ test('words filter the view, qualifiers search GitHub, and the preview shows the
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Markdown', text: /Adds the login endpoint/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /Handle the error here/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Markdown', text: /Handle the error here/ })).toBeTruthy()
 
   await ui.press({ key: 'key-f' })
   await ui.input({ key: 'input-search', text: 'billing' })
