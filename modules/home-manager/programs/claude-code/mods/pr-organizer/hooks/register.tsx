@@ -1,175 +1,90 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { GroupBy, Pr, Prompting, Status, View } from '../types'
+import type { GroupBy, Pr, Prompting, PrEvent, Snapshot, Status, TimelineItem, View } from '../types'
+import { DETAIL_QUERY, firstLine, LIST_QUERY, mergeLists, toTimeline } from './github'
+import type { ListData } from './github'
+import {
+  ago,
+  badge,
+  changesOf,
+  ciMark,
+  clip,
+  groupOf,
+  rowId,
+  rowsOf,
+  shortRef,
+  snapshotOf,
+  ticketOf,
+  UNGROUPED,
+  VIEWS,
+} from './model'
+import type { Row } from './model'
 
-const PANE = 'pr-organizer'
-const UNGROUPED = 'Ungrouped'
-
-const prsA = atom({ plugin: 'pr-organizer', key: 'prs' } as const, [], {
-  shape: 'prs-1',
-})
+const prsA = atom({ plugin: 'pr-organizer', key: 'prs' } as const, [], { shape: 'prs-2' })
 const viewA = atom({ plugin: 'pr-organizer', key: 'view' } as const, 'open')
-const groupByA = atom(
-  { plugin: 'pr-organizer', key: 'groupBy' } as const,
-  'group',
-)
+const groupByA = atom({ plugin: 'pr-organizer', key: 'groupBy' } as const, 'group')
+const modeA = atom({ plugin: 'pr-organizer', key: 'mode' } as const, 'list')
 const selectedA = atom({ plugin: 'pr-organizer', key: 'selected' } as const, null)
 const groupsA = atom({ plugin: 'pr-organizer', key: 'groups' } as const, {})
 const collapsedA = atom({ plugin: 'pr-organizer', key: 'collapsed' } as const, [])
 const statusA = atom({ plugin: 'pr-organizer', key: 'status' } as const, null)
 const loadingA = atom({ plugin: 'pr-organizer', key: 'isLoading' } as const, false)
 const confirmA = atom({ plugin: 'pr-organizer', key: 'confirm' } as const, null)
-const promptingA = atom(
-  { plugin: 'pr-organizer', key: 'prompting' } as const,
-  null,
-)
+const promptingA = atom({ plugin: 'pr-organizer', key: 'prompting' } as const, null)
 const fetchedAtA = atom({ plugin: 'pr-organizer', key: 'fetchedAt' } as const, 0)
 const scopeA = atom({ plugin: 'pr-organizer', key: 'scope' } as const, '')
-
-const VIEWS: { value: View; label: string; test: (p: Pr) => boolean }[] = [
-  { value: 'open', label: 'My open', test: p => p.isMine && p.state === 'OPEN' },
-  { value: 'draft', label: 'Draft', test: p => p.isMine && p.state === 'OPEN' && p.isDraft },
-  {
-    value: 'needs-review',
-    label: 'Awaiting review',
-    test: p =>
-      p.isMine &&
-      p.state === 'OPEN' &&
-      !p.isDraft &&
-      (p.review === 'REVIEW_REQUIRED' || p.review === null),
-  },
-  {
-    value: 'approved',
-    label: 'Approved',
-    test: p => p.isMine && p.state === 'OPEN' && p.review === 'APPROVED',
-  },
-  {
-    value: 'changes',
-    label: 'Changes requested',
-    test: p => p.isMine && p.state === 'OPEN' && p.review === 'CHANGES_REQUESTED',
-  },
-  {
-    value: 'failing',
-    label: 'CI failing',
-    test: p => p.isMine && p.state === 'OPEN' && (p.ci === 'FAILURE' || p.ci === 'ERROR'),
-  },
-  {
-    value: 'to-review',
-    label: 'Review requested of me',
-    test: p => p.isReviewRequested && p.state === 'OPEN',
-  },
-  { value: 'merged', label: 'Recently merged', test: p => p.isMine && p.state === 'MERGED' },
-]
-
-const TICKET = /(?:^|[^A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9}-\d+)(?![A-Za-z0-9])/
-
-function ticketOf(pr: Pr): string | null {
-  const m = TICKET.exec(pr.title) ?? TICKET.exec(pr.headRef)
-  return m?.[1] ? m[1].toUpperCase() : null
-}
-
-function groupOf(pr: Pr, by: GroupBy, groups: Record<string, string>): string {
-  if (by === 'none') return 'All'
-  if (by === 'repo') return pr.repo
-  return groups[pr.url] ?? ticketOf(pr) ?? UNGROUPED
-}
-
-function grouped(list: Pr[], by: GroupBy, groups: Record<string, string>) {
-  const map = new Map<string, Pr[]>()
-  for (const pr of list) {
-    const g = groupOf(pr, by, groups)
-    map.set(g, [...(map.get(g) ?? []), pr])
-  }
-  return [...map.entries()]
-    .map(([name, prs]) => ({
-      name,
-      prs: prs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    }))
-    .sort((a, b) =>
-      a.name === UNGROUPED ? 1 : b.name === UNGROUPED ? -1 : a.name.localeCompare(b.name),
-    )
-}
-
-const PR_FIELDS = `
-  nodes { ... on PullRequest {
-    url number title state isDraft updatedAt headRefName baseRefName
-    reviewDecision mergeable
-    author { login }
-    repository { nameWithOwner }
-    labels(first: 10) { nodes { name } }
-    reviewRequests(first: 10) { nodes { requestedReviewer {
-      ... on User { login } ... on Team { name } ... on Bot { login } } } }
-    commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-  } }`
-
-const QUERY = `query($mine: String!, $merged: String!, $review: String!) {
-  mine: search(query: $mine, type: ISSUE, first: 60) { ${PR_FIELDS} }
-  merged: search(query: $merged, type: ISSUE, first: 25) { ${PR_FIELDS} }
-  review: search(query: $review, type: ISSUE, first: 40) { ${PR_FIELDS} }
-}`
-
-type Node = {
-  url: string
-  number: number
-  title: string
-  state: Pr['state']
-  isDraft: boolean
-  updatedAt: string
-  headRefName: string
-  baseRefName: string
-  reviewDecision: string | null
-  mergeable: string
-  author: { login: string } | null
-  repository: { nameWithOwner: string }
-  labels: { nodes: { name: string }[] }
-  reviewRequests: { nodes: { requestedReviewer: { login?: string; name?: string } | null }[] }
-  commits: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] }
-}
-
-function toPr(n: Node, isMine: boolean, isReviewRequested: boolean): Pr {
-  return {
-    url: n.url,
-    number: n.number,
-    title: n.title,
-    repo: n.repository.nameWithOwner,
-    author: n.author?.login ?? 'ghost',
-    state: n.state,
-    isDraft: n.isDraft,
-    review: n.reviewDecision,
-    ci: n.commits.nodes[0]?.commit.statusCheckRollup?.state ?? null,
-    mergeable: n.mergeable,
-    headRef: n.headRefName,
-    baseRef: n.baseRefName,
-    updatedAt: n.updatedAt,
-    labels: n.labels.nodes.map(l => l.name),
-    reviewers: n.reviewRequests.nodes
-      .map(r => r.requestedReviewer?.login ?? r.requestedReviewer?.name ?? '')
-      .filter(Boolean),
-    isMine,
-    isReviewRequested,
-  }
-}
+const detailA = atom({ plugin: 'pr-organizer', key: 'detail' } as const, null, {
+  shape: 'detail-1',
+})
+const detailOffsetA = atom({ plugin: 'pr-organizer', key: 'detailOffset' } as const, 0)
+const eventsA = atom({ plugin: 'pr-organizer', key: 'events' } as const, [], {
+  shape: 'events-1',
+})
+const pollMinutesA = atom({ plugin: 'pr-organizer', key: 'pollMinutes' } as const, 3)
 
 type Dollar = EngineInterface
 
-function firstLine(text: string): string {
-  return text.trim().split('\n')[0]?.slice(0, 300) ?? ''
-}
+const PANE = 'pr-organizer'
+const GROUP_BYS: GroupBy[] = ['group', 'repo', 'none']
+const MODEL_TOOLS = 'mcp__pr-organizer__list_prs and mcp__pr-organizer__set_pr_group'
+
+let pollTimer: Timer | undefined
 
 async function setStatus($: Dollar, status: Status) {
   await update($, statusA, () => status)
 }
 
-async function refresh($: Dollar): Promise<string | null> {
-  await update($, loadingA, () => true)
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+async function pushEvents($: Dollar, found: { url: string; kind: PrEvent['kind']; text: string }[]) {
+  if (found.length === 0) return
+  const now = await $.clock.now()
+  const fresh: PrEvent[] = found.map((f, i) => ({ ...f, id: `${now}-${i}`, at: now }))
+  await update($, eventsA, list => {
+    const replaced = list.filter(e => !fresh.some(f => f.url === e.url && f.kind === e.kind))
+    return [...fresh, ...replaced].slice(0, 30)
+  })
+  if (fresh.length > 3) {
+    $.ui.toast(`${fresh.length} PR updates. Press ctrl+x tab, then o to open the newest.`, {
+      timeoutMs: 8000,
+    })
+    return
+  }
+  for (const f of fresh) $.ui.toast(f.text, { timeoutMs: 8000 })
+}
+
+async function refresh($: Dollar, opts: { quiet?: boolean } = {}): Promise<string | null> {
+  if (!opts.quiet) await update($, loadingA, () => true)
   try {
     const scope = (await read($, scopeA)).trim()
     const q = (s: string) => (scope ? `${s} ${scope}` : s)
     const ran = await $.process.run(
       [
         'gh', 'api', 'graphql',
-        '-f', `query=${QUERY}`,
+        '-f', `query=${LIST_QUERY}`,
         '-f', `mine=${q('is:pr is:open author:@me archived:false sort:updated-desc')}`,
         '-f', `merged=${q('is:pr is:merged author:@me sort:updated-desc')}`,
         '-f', `review=${q('is:pr is:open review-requested:@me archived:false sort:updated-desc')}`,
@@ -181,27 +96,40 @@ async function refresh($: Dollar): Promise<string | null> {
       await setStatus($, { text: err, isError: true })
       return err
     }
-    const data = JSON.parse(ran.stdout).data as Record<'mine' | 'merged' | 'review', { nodes: Node[] }>
-    const byUrl = new Map<string, Pr>()
-    for (const n of [...data.mine.nodes, ...data.merged.nodes]) {
-      if (n?.url) byUrl.set(n.url, toPr(n, true, false))
-    }
-    for (const n of data.review.nodes) {
-      if (!n?.url) continue
-      const had = byUrl.get(n.url)
-      byUrl.set(n.url, had ? { ...had, isReviewRequested: true } : toPr(n, false, true))
-    }
-    const list = [...byUrl.values()]
+    const data = JSON.parse(ran.stdout).data as ListData
+    const list = mergeLists(data)
+    const before = (await $.store.get('snapshot')) as Snapshot | undefined
+    if (before) await pushEvents($, changesOf(before, list, data.viewer.login))
+    await $.store.set('snapshot', snapshotOf(list))
     await update($, prsA, () => list)
     await update($, fetchedAtA, () => Date.now())
-    await setStatus($, null)
+    if (!opts.quiet) await setStatus($, null)
     return null
   } catch (err) {
-    const msg = `Could not load PRs: ${err instanceof Error ? err.message : String(err)}`
-    await setStatus($, { text: msg, isError: true })
+    const msg = `Could not load PRs: ${errorText(err)}`
+    if (!opts.quiet) await setStatus($, { text: msg, isError: true })
     return msg
   } finally {
-    await update($, loadingA, () => false)
+    if (!opts.quiet) await update($, loadingA, () => false)
+  }
+}
+
+async function fetchDetail($: Dollar, url: string) {
+  await update($, detailA, d => (d?.url === url ? d : null))
+  try {
+    const ran = await $.process.run(
+      ['gh', 'api', 'graphql', '-f', `query=${DETAIL_QUERY}`, '-f', `url=${url}`],
+      { timeoutMs: 60_000 },
+    )
+    if (ran.exitCode !== 0) {
+      await setStatus($, { text: `Comments: ${firstLine(ran.stderr || ran.stdout)}`, isError: true })
+      return
+    }
+    const node = JSON.parse(ran.stdout).data?.resource
+    if (!node) return
+    await update($, detailA, () => ({ url, items: toTimeline(node) }))
+  } catch (err) {
+    await setStatus($, { text: `Comments: ${errorText(err)}`, isError: true })
   }
 }
 
@@ -212,17 +140,18 @@ async function gh($: Dollar, doing: string, argv: string[]) {
   try {
     const ran = await $.process.run(['gh', ...argv], { timeoutMs: 120_000 })
     if (ran.exitCode !== 0) {
-      await setStatus($, { text: `${doing} failed: ${firstLine(ran.stderr || ran.stdout)}`, isError: true })
+      await setStatus($, {
+        text: `${doing} failed: ${firstLine(ran.stderr || ran.stdout)}`,
+        isError: true,
+      })
       return
     }
-    await refresh($)
+    await refresh($, { quiet: true })
+    const selected = await read($, selectedA)
+    if ((await read($, modeA)) === 'detail' && selected) await fetchDetail($, selected)
     await setStatus($, { text: `${doing}: done`, isError: false })
-    $.ui.toast(`${doing}: done`)
   } catch (err) {
-    await setStatus($, {
-      text: `${doing} failed: ${err instanceof Error ? err.message : String(err)}`,
-      isError: true,
-    })
+    await setStatus($, { text: `${doing} failed: ${errorText(err)}`, isError: true })
   }
 }
 
@@ -239,58 +168,138 @@ async function setGroup($: Dollar, urls: string[], group: string) {
   await $.store.set('groups', next)
 }
 
-function clip(text: string, width: number): string {
-  return text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`
+async function openInBrowser($: Dollar, url: string) {
+  for (const opener of ['open', 'xdg-open']) {
+    try {
+      const ran = await $.process.run([opener, url], { timeoutMs: 10_000 })
+      if (ran.exitCode === 0) return
+    } catch {}
+  }
+  await setStatus($, { text: `Could not open a browser for ${url}`, isError: true })
 }
 
-function ago(iso: string): string {
-  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000)
-  if (s < 3600) return `${Math.round(s / 60)}m`
-  if (s < 86400) return `${Math.round(s / 3600)}h`
-  return `${Math.round(s / 86400)}d`
+async function dismissEventsFor($: Dollar, url: string) {
+  await update($, eventsA, list => list.filter(e => e.url !== url))
 }
 
-function badge(pr: Pr): { text: string; color: string } {
-  if (pr.state === 'MERGED') return { text: 'merged', color: 'merged' }
-  if (pr.state === 'CLOSED') return { text: 'closed', color: 'inactive' }
-  if (pr.isDraft) return { text: 'draft', color: 'inactive' }
-  if (pr.review === 'APPROVED') return { text: 'approved', color: 'success' }
-  if (pr.review === 'CHANGES_REQUESTED') return { text: 'changes', color: 'error' }
-  return { text: 'review', color: 'warning' }
+async function openPr($: Dollar, url: string) {
+  await update($, selectedA, () => url)
+  await update($, modeA, () => 'detail')
+  await update($, detailOffsetA, () => 0)
+  await update($, confirmA, () => null)
+  await update($, promptingA, () => null)
+  await dismissEventsFor($, url)
+  await fetchDetail($, url)
 }
 
-function ciMark(pr: Pr): { text: string; color: string } {
-  switch (pr.ci) {
-    case 'SUCCESS':
-      return { text: '✓', color: 'success' }
-    case 'FAILURE':
-    case 'ERROR':
-      return { text: '✗', color: 'error' }
-    case 'PENDING':
-    case 'EXPECTED':
-      return { text: '●', color: 'warning' }
+async function visibleRows($: Dollar): Promise<Row[]> {
+  const view = await read($, viewA)
+  const current = VIEWS.find(v => v.value === view) ?? VIEWS[0]!
+  return rowsOf(
+    (await read($, prsA)).filter(current.test),
+    await read($, groupByA),
+    await read($, groupsA),
+    await read($, collapsedA),
+  )
+}
+
+async function moveCursor($: Dollar, to: (index: number, rows: Row[]) => number) {
+  const rows = await visibleRows($)
+  if (rows.length === 0) return
+  const selected = await read($, selectedA)
+  const at = Math.max(-1, rows.findIndex(r => rowId(r) === selected))
+  const index = Math.min(rows.length - 1, Math.max(0, to(at, rows)))
+  const row = rows[index]
+  if (!row) return
+  await update($, selectedA, () => rowId(row))
+  await update($, confirmA, () => null)
+}
+
+async function stepPr($: Dollar, delta: 1 | -1) {
+  const rows = (await visibleRows($)).filter(r => r.kind === 'pr')
+  if (rows.length === 0) return
+  const selected = await read($, selectedA)
+  const at = rows.findIndex(r => rowId(r) === selected)
+  const row = rows[(at + delta + rows.length) % rows.length]
+  if (row) await openPr($, rowId(row))
+}
+
+async function toggleFold($: Dollar, name: string) {
+  await update($, collapsedA, c => (c.includes(name) ? c.filter(n => n !== name) : [...c, name]))
+}
+
+async function selectedRow($: Dollar): Promise<Row | null> {
+  const selected = await read($, selectedA)
+  return (await visibleRows($)).find(r => rowId(r) === selected) ?? null
+}
+
+function askClaude($: Dollar, pr: Pr) {
+  const isFailing = pr.ci === 'FAILURE' || pr.ci === 'ERROR'
+  const text =
+    pr.isReviewRequested && !pr.isMine
+      ? `Review this pull request and tell me anything I should flag before approving: ${pr.url}`
+      : pr.isMine && (pr.review === 'CHANGES_REQUESTED' || isFailing)
+        ? `My PR ${pr.url} (branch ${pr.headRef}) has ${pr.review === 'CHANGES_REQUESTED' ? 'requested changes' : 'failing CI'}. Read the review comments and failing checks, and help me fix them.`
+        : `Summarize the current state of ${pr.url}: what is left before it can merge, and what reviewers said.`
+  void $.prompt.submit({ text })
+}
+
+async function confirmOr($: Dollar, action: string, url: string, run: () => Promise<void>) {
+  const tag = `${action}:${url}`
+  if ((await read($, confirmA)) === tag) {
+    await run()
+    return
+  }
+  await update($, confirmA, () => tag)
+}
+
+function startPolling($: Dollar, minutes: number) {
+  pollTimer?.cancel()
+  pollTimer = undefined
+  if (minutes <= 0) return
+  pollTimer = $.clock.every(minutes * 60_000, () => {
+    void (async () => {
+      if (await read($, loadingA)) return
+      await refresh($, { quiet: true })
+    })()
+  })
+}
+
+async function openPane($: Dollar) {
+  await $.ui.open({ id: PANE, title: 'PRs', focus: true })
+}
+
+function itemHeader(item: TimelineItem, now: number): string {
+  const when = item.at ? `${ago(item.at, now)} ago` : ''
+  switch (item.kind) {
+    case 'description':
+      return `${item.author} · description`
+    case 'review':
+      return `${item.author} · ${(item.state ?? 'reviewed').toLowerCase().replace('_', ' ')} · ${when}`
+    case 'thread':
+      return `${item.author} · ${item.path}${item.line ? `:${item.line}` : ''}${item.isResolved ? ' · resolved' : ''} · ${when}`
     default:
-      return { text: '·', color: 'inactive' }
+      return `${item.author} · ${when}`
   }
 }
 
-const MODEL_TOOLS = 'mcp__pr-organizer__list_prs and mcp__pr-organizer__set_pr_group'
+function clipBody(body: string, lines: number): string {
+  const all = body.trim().split('\n')
+  return all.length <= lines ? all.join('\n') : `${all.slice(0, lines).join('\n')}\n…`
+}
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'prs',
-      description: 'Open the PR organizer pane (args: refresh | scope <gh search qualifiers>)',
-      argumentHint: '[refresh | scope org:acme]',
+      description: 'Open the PR organizer (args: refresh | scope <qualifiers> | poll <minutes|off>)',
+      argumentHint: '[refresh | scope org:acme | poll 5]',
     })
     await $.tool.register({
       name: 'list_prs',
       description:
-        "List the user's GitHub PRs (their open + recently merged ones, and ones awaiting their review) as JSON, with the group each one is currently in. Pass refresh=true to re-fetch from GitHub first.",
-      inputSchema: {
-        type: 'object',
-        properties: { refresh: { type: 'boolean' } },
-      },
+        "List the user's GitHub PRs (their open and recently merged ones, and ones awaiting their review) as JSON, with the group each one is in. Pass refresh=true to re-fetch from GitHub first.",
+      inputSchema: { type: 'object', properties: { refresh: { type: 'boolean' } } },
     })
     await $.tool.register({
       name: 'set_pr_group',
@@ -312,6 +321,12 @@ export const register: Register = on => {
     }
     const storedScope = await $.store.get('scope')
     if (typeof storedScope === 'string') await update($, scopeA, () => storedScope)
+    const storedPoll = await $.store.get('pollMinutes')
+    if (typeof storedPoll === 'number') await update($, pollMinutesA, () => storedPoll)
+
+    const minutes = await read($, pollMinutesA)
+    startPolling($, minutes)
+    if (minutes > 0) $.clock.after(5_000, () => void refresh($, { quiet: true }))
 
     return next(e)
   })
@@ -325,12 +340,25 @@ export const register: Register = on => {
       const err = await refresh($)
       return { text: err ?? (scope ? `PR search scope set to: ${scope}` : 'PR search scope cleared.') }
     }
-    await $.ui.open({ id: PANE, title: 'PRs', focus: true })
-    const isStale = Date.now() - (await read($, fetchedAtA)) > 5 * 60_000
+    if (sub === 'poll') {
+      const arg = rest[0] ?? ''
+      const minutes = arg === 'off' ? 0 : Number(arg)
+      if (!Number.isFinite(minutes) || minutes < 0) {
+        return { text: 'Usage: /prs poll <minutes> or /prs poll off' }
+      }
+      await update($, pollMinutesA, () => minutes)
+      await $.store.set('pollMinutes', minutes)
+      startPolling($, minutes)
+      return {
+        text: minutes > 0 ? `Checking PRs every ${minutes} min.` : 'Background PR checks are off.',
+      }
+    }
+    await openPane($)
     if (sub === 'refresh') {
       const err = await refresh($)
       return { text: err ?? 'PR organizer opened and refreshed.' }
     }
+    const isStale = Date.now() - (await read($, fetchedAtA)) > 5 * 60_000
     if (isStale) void refresh($)
     return { text: 'PR organizer opened.' }
   })
@@ -362,7 +390,9 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'mcp__pr-organizer__set_pr_group' }, async ($, e) => {
     const args = e as unknown as { urls?: unknown; group?: unknown }
-    const urls = Array.isArray(args.urls) ? args.urls.filter((u): u is string => typeof u === 'string') : []
+    const urls = Array.isArray(args.urls)
+      ? args.urls.filter((u): u is string => typeof u === 'string')
+      : []
     const group = typeof args.group === 'string' ? args.group : ''
     if (urls.length === 0) return { deny: 'urls must be a non-empty array of PR URLs' }
     await setGroup($, urls, group)
@@ -371,15 +401,75 @@ export const register: Register = on => {
         ? `Put ${urls.length} PR(s) in group "${group.trim()}".`
         : `Cleared the manual group of ${urls.length} PR(s).`,
     }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'pr-organizer: setting the group failed.' }))
+  }).catch(($, e, next) =>
+    next.called ? next(e) : { deny: 'pr-organizer: setting the group failed.' },
+  )
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const events = await read($, eventsA)
+    const top = events[0]
+    if (e.props.hasSurvey || !top) return next(e)
+
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const pr = (await read($, prsA)).find(p => p.url === top.url)
+    const confirm = await read($, confirmA)
+    const canMerge =
+      pr !== undefined && pr.isMine && pr.state === 'OPEN' && pr.review === 'APPROVED'
+    const isConfirming = confirm === `band-merge:${top.url}`
+    const width = Math.max(20, e.props.bodyColumns - 40)
+
+    return (
+      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+        <Text color={top.kind === 'ci-failed' || top.kind === 'changes' ? 'error' : 'success'}>
+          PR
+        </Text>
+        <Text>{clip(top.text, width)}</Text>
+        {events.length > 1 && <Text dimColor>+{events.length - 1}</Text>}
+        <Button
+          key="band-open"
+          hotkey="o"
+          label="open"
+          onPress={() =>
+            void (async () => {
+              await openPane($)
+              await openPr($, top.url)
+            })()
+          }
+        />
+        {canMerge && (
+          <Button
+            key="band-merge"
+            hotkey="m"
+            variant={isConfirming ? 'primary' : undefined}
+            label={isConfirming ? 'confirm merge' : 'merge'}
+            onPress={() =>
+              void confirmOr($, 'band-merge', top.url, async () => {
+                await gh($, `Merge ${shortRef(pr)}`, ['pr', 'merge', top.url, '--squash', '--delete-branch'])
+                await dismissEventsFor($, top.url)
+                const status = await read($, statusA)
+                if (status) $.ui.toast(status.text)
+              })
+            }
+          />
+        )}
+        <Button key="band-dismiss" hotkey="d" label="dismiss" onPress={() => void update($, eventsA, l => l.slice(1))} />
+        {events.length > 1 && (
+          <Button key="band-clear" hotkey="x" label="clear all" onPress={() => void update($, eventsA, () => [])} />
+        )}
+      </Box>
+    )
+  })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Select, Input, Link } = $.ui.resolve(e)
+    const { Box, Text, Button, Input, Link, Markdown } = $.ui.resolve(e)
     const width = Math.max(30, e.props.bodyColumns)
+    const height = Math.max(12, e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30)
+    const now = Date.now()
 
     const prs = await read($, prsA)
     const view = await read($, viewA)
     const groupBy = await read($, groupByA)
+    const mode = await read($, modeA)
     const selected = await read($, selectedA)
     const groups = await read($, groupsA)
     const collapsed = await read($, collapsedA)
@@ -389,199 +479,40 @@ export const register: Register = on => {
     const prompting = await read($, promptingA)
     const fetchedAt = await read($, fetchedAtA)
     const scope = await read($, scopeA)
+    const detail = await read($, detailA)
+    const detailOffset = await read($, detailOffsetA)
+    const pollMinutes = await read($, pollMinutesA)
 
     const current = VIEWS.find(v => v.value === view) ?? VIEWS[0]!
-    const shown = prs.filter(current.test)
-    const sections = grouped(shown, groupBy, groups)
+    const rows = rowsOf(prs.filter(current.test), groupBy, groups, collapsed)
     const pr = prs.find(p => p.url === selected) ?? null
-
-    const ask = (action: string, url: string) => update($, confirmA, () => `${action}:${url}`)
     const isAsking = (action: string) => pr !== null && confirm === `${action}:${pr.url}`
 
-    const header = (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          <Select
-            key="view"
-            label="View"
-            value={view}
-            options={VIEWS.map(v => ({
-              value: v.value,
-              label: `${v.label} (${prs.filter(v.test).length})`,
-            }))}
-            onSelect={value => update($, viewA, () => value as View)}
-          />
-          <Text> </Text>
-          <Select
-            key="groupBy"
-            label="Group"
-            value={groupBy}
-            options={[
-              { value: 'group', label: 'by ticket / group' },
-              { value: 'repo', label: 'by repo' },
-              { value: 'none', label: 'none' },
-            ]}
-            onSelect={value => update($, groupByA, () => value as GroupBy)}
-          />
-        </Box>
-        <Box flexDirection="row">
-          <Button key="refresh" hotkey="r" label={isLoading ? 'Loading…' : 'Refresh'} onPress={() => void refresh($)} />
-          <Text> </Text>
-          <Button
-            key="auto-group"
-            hotkey="g"
-            label="Ask Claude to group"
-            onPress={() =>
-              void $.prompt.submit({
-                text: `Group my pull requests by related work. Use ${MODEL_TOOLS}: list them, work out which ones belong to the same piece of work (shared ticket keys, branch names, titles, repos that change together), and put each cluster in a short descriptive group. Leave PRs that already sit in a sensible ticket group alone. Tell me the groups you made.`,
-              })
-            }
-          />
+    const key = (k: string, label: string, run: () => unknown, color?: string) => (
+      <Button key={`key-${k}`} plain hotkey={k} onPress={() => void run()}>
+        {color ? <Text color={color} bold>{label}</Text> : label}
+      </Button>
+    )
+
+    const statusLine = (
+      <Box flexDirection="row" columnGap={1}>
+        {isLoading && <Text color="warning">loading…</Text>}
+        {status && <Text color={status.isError ? 'error' : 'subtle'}>{clip(status.text, width - 12)}</Text>}
+        {!isLoading && !status && (
           <Text dimColor>
-            {' '}
-            {fetchedAt ? `updated ${ago(new Date(fetchedAt).toISOString())} ago` : 'not loaded'}
-            {scope ? ` · scope: ${scope}` : ''}
+            {fetchedAt ? `updated ${ago(new Date(fetchedAt).toISOString(), now)} ago` : 'not loaded'}
+            {pollMinutes > 0 ? ` · checks every ${pollMinutes}m` : ' · background checks off'}
+            {scope ? ` · ${scope}` : ''}
           </Text>
-        </Box>
-        {status && <Text color={status.isError ? 'error' : 'subtle'}>{clip(status.text, width)}</Text>}
+        )}
       </Box>
     )
 
-    const list = (
-      <Box flexDirection="column">
-        {prs.length === 0 && !isLoading && <Text dimColor>No PRs loaded yet — press Refresh (r).</Text>}
-        {prs.length > 0 && shown.length === 0 && <Text dimColor>Nothing in “{current.label}”.</Text>}
-        {sections.map(section => {
-          const isCollapsed = collapsed.includes(section.name)
-          return (
-            <Box flexDirection="column" key={`sec:${section.name}`}>
-              {groupBy !== 'none' && (
-                <Button
-                  key={`grp:${section.name}`}
-                  plain
-                  onPress={() =>
-                    update($, collapsedA, c =>
-                      c.includes(section.name) ? c.filter(n => n !== section.name) : [...c, section.name],
-                    )
-                  }
-                >
-                  {isCollapsed ? '▸ ' : '▾ '}
-                  <Text bold color="claude">
-                    {section.name}
-                  </Text>
-                  <Text dimColor> ({section.prs.length})</Text>
-                </Button>
-              )}
-              {!isCollapsed &&
-                section.prs.map(p => {
-                  const b = badge(p)
-                  const ci = ciMark(p)
-                  const ref = `${p.repo.split('/')[1] ?? p.repo}#${p.number}`
-                  const room = width - ref.length - b.text.length - 12
-                  return (
-                    <Button
-                      key={p.url}
-                      plain
-                      onPress={() => {
-                        void update($, selectedA, s => (s === p.url ? null : p.url))
-                        void update($, confirmA, () => null)
-                        void update($, promptingA, () => null)
-                      }}
-                    >
-                      {p.url === selected ? '› ' : '  '}
-                      <Text color={ci.color}>{ci.text}</Text>{' '}
-                      <Text color={b.color}>{b.text}</Text>{' '}
-                      <Text dimColor>{ref}</Text> {clip(p.title, Math.max(10, room))}
-                    </Button>
-                  )
-                })}
-            </Box>
-          )
-        })}
-      </Box>
-    )
-
-    let detail = null
-    if (pr) {
-      const b = badge(pr)
-      const manual = groups[pr.url]
-      const isOpen = pr.state === 'OPEN'
-      const actions = []
-
-      if (isOpen && pr.isMine) {
-        actions.push(
-          pr.isDraft ? (
-            <Button key="ready" hotkey="y" label="Ready for review" onPress={() => void gh($, 'Mark ready', ['pr', 'ready', pr.url])} />
-          ) : (
-            <Button key="draft" label="Convert to draft" onPress={() => void gh($, 'Convert to draft', ['pr', 'ready', pr.url, '--undo'])} />
-          ),
-        )
-        actions.push(
-          isAsking('merge') ? (
-            <Button key="merge" hotkey="m" variant="primary" label="Confirm squash-merge" onPress={() => void gh($, 'Merge', ['pr', 'merge', pr.url, '--squash', '--delete-branch'])} />
-          ) : (
-            <Button key="merge" hotkey="m" label="Merge" onPress={() => void ask('merge', pr.url)} />
-          ),
-        )
-        actions.push(
-          <Button key="auto" label="Auto-merge" onPress={() => void gh($, 'Enable auto-merge', ['pr', 'merge', pr.url, '--auto', '--squash'])} />,
-        )
-        actions.push(
-          <Button key="update" label="Update branch" onPress={() => void gh($, 'Update branch', ['pr', 'update-branch', pr.url])} />,
-        )
-        actions.push(
-          <Button key="reviewers" hotkey="v" label="Request review…" onPress={() => void update($, promptingA, () => 'reviewers')} />,
-        )
-        actions.push(
-          isAsking('close') ? (
-            <Button key="close" hotkey="x" variant="primary" label="Confirm close" onPress={() => void gh($, 'Close', ['pr', 'close', pr.url])} />
-          ) : (
-            <Button key="close" hotkey="x" label="Close" onPress={() => void ask('close', pr.url)} />
-          ),
-        )
-      }
-      if (isOpen && pr.isReviewRequested) {
-        actions.push(
-          isAsking('approve') ? (
-            <Button key="approve" hotkey="a" variant="primary" label="Confirm approve" onPress={() => void gh($, 'Approve', ['pr', 'review', pr.url, '--approve'])} />
-          ) : (
-            <Button key="approve" hotkey="a" label="Approve" onPress={() => void ask('approve', pr.url)} />
-          ),
-        )
-        actions.push(
-          <Button
-            key="claude-review"
-            label="Ask Claude to review"
-            onPress={() => void $.prompt.submit({ text: `Review this pull request and summarize anything I should flag before approving: ${pr.url}` })}
-          />,
-        )
-      }
-      if (isOpen && pr.isMine && (pr.review === 'CHANGES_REQUESTED' || pr.ci === 'FAILURE' || pr.ci === 'ERROR')) {
-        actions.push(
-          <Button
-            key="claude-fix"
-            label="Ask Claude to fix"
-            onPress={() =>
-              void $.prompt.submit({
-                text: `My PR ${pr.url} (branch ${pr.headRef}) has ${pr.review === 'CHANGES_REQUESTED' ? 'requested changes' : 'failing CI'}. Look at the review comments / failing checks and help me address them.`,
-              })
-            }
-          />,
-        )
-      }
-      actions.push(<Button key="comment" hotkey="c" label="Comment…" onPress={() => void update($, promptingA, () => 'comment')} />)
-      actions.push(<Button key="set-group" hotkey="s" label="Set group…" onPress={() => void update($, promptingA, () => 'group')} />)
-      if (manual) {
-        actions.push(<Button key="clear-group" label="Clear group" onPress={() => void setGroup($, [pr.url], '')} />)
-      }
-      if (confirm) {
-        actions.push(<Button key="cancel" label="Cancel" onPress={() => void update($, confirmA, () => null)} />)
-      }
-
-      const inputs: Record<Exclude<Prompting, null>, { label: string; placeholder: string; submit: (v: string) => void }> = {
+    if (prompting && pr) {
+      const fields: Record<Exclude<Prompting, null>, { label: string; placeholder: string; submit: (v: string) => void }> = {
         comment: {
           label: 'Comment',
-          placeholder: 'Write a comment…',
+          placeholder: 'Write a comment, Enter to post',
           submit: v => {
             if (v.trim()) void gh($, 'Comment', ['pr', 'comment', pr.url, '--body', v])
           },
@@ -596,59 +527,264 @@ export const register: Register = on => {
         },
         group: {
           label: 'Group',
-          placeholder: manual ?? ticketOf(pr) ?? 'e.g. PROJ-12 or “auth rewrite”',
+          placeholder: groups[pr.url] ?? ticketOf(pr) ?? 'e.g. PROJ-12 or auth rewrite',
           submit: v => {
             void setGroup($, [pr.url], v)
             void update($, promptingA, () => null)
           },
         },
       }
-      const field = prompting ? inputs[prompting] : null
+      const field = fields[prompting]
+      return (
+        <Box flexDirection="column">
+          <Text bold>{clip(`${shortRef(pr)} ${pr.title}`, width)}</Text>
+          <Input
+            key={`input-${prompting}`}
+            label={field.label}
+            placeholder={field.placeholder}
+            rows={prompting === 'comment' ? 4 : 1}
+            autoFocus
+            onSubmit={v => field.submit(v)}
+          />
+          <Button key="input-cancel" label="Cancel" onPress={() => void update($, promptingA, () => null)} />
+        </Box>
+      )
+    }
 
-      detail = (
-        <Box flexDirection="column" borderStyle="round" paddingX={1}>
-          <Text bold>{clip(pr.title, width - 4)}</Text>
-          <Link href={pr.url} label={clip(`${pr.repo}#${pr.number}`, width - 4)} />
-          <Text dimColor>
-            {clip(`${pr.headRef} → ${pr.baseRef} · by ${pr.author} · ${ago(pr.updatedAt)} ago`, width - 4)}
-          </Text>
-          <Text>
+    if (mode === 'detail' && pr) {
+      const b = badge(pr)
+      const ci = ciMark(pr)
+      const isOpen = pr.state === 'OPEN'
+      const items = detail?.url === pr.url ? detail.items : null
+      const perItem = 8
+      const room = Math.max(1, Math.floor((height - 12) / perItem))
+      const offset = Math.min(detailOffset, Math.max(0, (items?.length ?? 1) - 1))
+      const shown = items?.slice(offset, offset + room) ?? []
+
+      const actions = [
+        key('h', 'back', () => update($, modeA, () => 'list')),
+        key('j', 'down', () => update($, detailOffsetA, o => Math.min(o + 1, Math.max(0, (items?.length ?? 1) - 1)))),
+        key('k', 'up', () => update($, detailOffsetA, o => Math.max(0, o - 1))),
+        key('g', 'top', () => update($, detailOffsetA, () => 0)),
+        key('n', 'next PR', () => stepPr($, 1)),
+        key('p', 'prev PR', () => stepPr($, -1)),
+        key('o', 'browser', () => openInBrowser($, pr.url)),
+        key('c', 'comment', () => update($, promptingA, () => 'comment')),
+      ]
+      if (isOpen && pr.isMine) {
+        actions.push(
+          key('m', isAsking('merge') ? 'm again to merge' : 'merge', () =>
+            confirmOr($, 'merge', pr.url, () => gh($, 'Merge', ['pr', 'merge', pr.url, '--squash', '--delete-branch'])),
+            isAsking('merge') ? 'warning' : undefined,
+          ),
+          key('w', 'auto-merge', () => gh($, 'Auto-merge', ['pr', 'merge', pr.url, '--auto', '--squash'])),
+          pr.isDraft
+            ? key('y', 'ready', () => gh($, 'Mark ready', ['pr', 'ready', pr.url]))
+            : key('y', 'to draft', () => gh($, 'Convert to draft', ['pr', 'ready', pr.url, '--undo'])),
+          key('b', 'update branch', () => gh($, 'Update branch', ['pr', 'update-branch', pr.url])),
+          key('v', 'reviewers', () => update($, promptingA, () => 'reviewers')),
+          key('x', isAsking('close') ? 'x again to close' : 'close', () =>
+            confirmOr($, 'close', pr.url, () => gh($, 'Close', ['pr', 'close', pr.url])),
+            isAsking('close') ? 'warning' : undefined,
+          ),
+        )
+      }
+      if (isOpen && pr.isReviewRequested) {
+        actions.push(
+          key('a', isAsking('approve') ? 'a again to approve' : 'approve', () =>
+            confirmOr($, 'approve', pr.url, () => gh($, 'Approve', ['pr', 'review', pr.url, '--approve'])),
+            isAsking('approve') ? 'warning' : undefined,
+          ),
+        )
+      }
+      actions.push(
+        key('s', 'set group', () => update($, promptingA, () => 'group')),
+        key('i', 'ask Claude', () => askClaude($, pr)),
+        key('r', 'refresh', async () => {
+          await refresh($)
+          await fetchDetail($, pr.url)
+        }),
+        key('q', 'quit', () => $.ui.close({ id: PANE })),
+      )
+
+      return (
+        <Box flexDirection="column">
+          <Text bold>{clip(pr.title, width)}</Text>
+          <Box flexDirection="row" columnGap={1}>
+            <Link href={pr.url} label={`${pr.repo}#${pr.number}`} />
             <Text color={b.color}>{b.text}</Text>
-            {' · CI '}
-            <Text color={ciMark(pr).color}>{(pr.ci ?? 'none').toLowerCase()}</Text>
-            {pr.mergeable === 'CONFLICTING' ? <Text color="error"> · conflicts</Text> : ''}
-          </Text>
-          {pr.reviewers.length > 0 && <Text dimColor>{clip(`reviewers: ${pr.reviewers.join(', ')}`, width - 4)}</Text>}
-          {pr.labels.length > 0 && <Text dimColor>{clip(`labels: ${pr.labels.join(', ')}`, width - 4)}</Text>}
+            <Text color={ci.color}>CI {(pr.ci ?? 'none').toLowerCase()}</Text>
+            {pr.mergeable === 'CONFLICTING' && <Text color="error">conflicts</Text>}
+          </Box>
           <Text dimColor>
-            group: {manual ? `${manual} (manual)` : (ticketOf(pr) ?? UNGROUPED)}
+            {clip(`${pr.headRef} → ${pr.baseRef} · by ${pr.author} · ${ago(pr.updatedAt, now)} ago · group ${groups[pr.url] ?? ticketOf(pr) ?? UNGROUPED}`, width)}
           </Text>
-          <Box flexDirection="row" flexWrap="wrap">
+          {pr.reviewers.length > 0 && <Text dimColor>{clip(`waiting on: ${pr.reviewers.join(', ')}`, width)}</Text>}
+          {statusLine}
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             {actions}
           </Box>
-          {field && prompting && (
-            <Box flexDirection="row">
-              <Input
-                key={`input:${prompting}`}
-                label={field.label}
-                placeholder={field.placeholder}
-                autoFocus
-                onSubmit={v => field.submit(v)}
-              />
-              <Button key="input-cancel" label="Cancel" onPress={() => void update($, promptingA, () => null)} />
+          <Text dimColor>
+            {items === null
+              ? 'Loading comments…'
+              : items.length === 0
+                ? 'No comments yet.'
+                : `Conversation, newest first · ${offset + 1}-${Math.min(items.length, offset + room)} of ${items.length}`}
+          </Text>
+          {shown.map((item, i) => (
+            <Box key={`item-${offset + i}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+              <Text color={item.state === 'APPROVED' ? 'success' : item.state === 'CHANGES_REQUESTED' ? 'error' : 'claude'}>
+                {clip(itemHeader(item, now), width - 4)}
+              </Text>
+              {item.body.trim() !== '' && <Markdown text={clipBody(item.body, perItem - 3)} />}
+              {(item.replies ?? []).map(r => (
+                <Text dimColor>{clip(`↳ ${r.author}: ${firstLine(r.body)}`, width - 4)}</Text>
+              ))}
             </Box>
+          ))}
+          {items !== null && offset + room < items.length && (
+            <Text dimColor>↓ {items.length - offset - room} more (j)</Text>
           )}
         </Box>
       )
     }
 
+    const listRoom = Math.max(4, height - 8)
+    const cursor = Math.max(0, rows.findIndex(r => rowId(r) === selected))
+    const start = Math.min(Math.max(0, cursor - Math.floor(listRoom / 2)), Math.max(0, rows.length - listRoom))
+    const windowed = rows.slice(start, start + listRoom)
+    const cursorRow = rows[cursor]
+    const cursorPr = cursorRow?.kind === 'pr' ? cursorRow.pr : null
+
+    const tabs = VIEWS.map((v, i) => {
+      const count = prs.filter(v.test).length
+      const isOn = v.value === view
+      return (
+        <Button
+          key={`view-${v.value}`}
+          plain
+          hotkey={String(i + 1)}
+          onPress={() =>
+            void (async () => {
+              await update($, viewA, () => v.value as View)
+              await update($, selectedA, () => null)
+              await moveCursor($, () => 0)
+            })()
+          }
+        >
+          <Text bold={isOn} inverse={isOn}>{` ${v.label} ${count} `}</Text>
+        </Button>
+      )
+    })
+
+    const listKeys = [
+      key('j', 'down', () => moveCursor($, i => i + 1)),
+      key('k', 'up', () => moveCursor($, i => i - 1)),
+      key('g', 'top', () => moveCursor($, () => 0)),
+      key('e', 'end', () => moveCursor($, (_, r) => r.length - 1)),
+      key('l', 'open', async () => {
+        const row = await selectedRow($)
+        if (row?.kind === 'pr') await openPr($, row.pr.url)
+        else if (row?.kind === 'group') await toggleFold($, row.name)
+      }),
+      key('z', 'fold', async () => {
+        const row = await selectedRow($)
+        if (row?.kind === 'group') {
+          await toggleFold($, row.name)
+          return
+        }
+        if (row?.kind !== 'pr') return
+        const owner = groupOf(row.pr, groupBy, groups)
+        await toggleFold($, owner)
+        await update($, selectedA, () => `grp:${owner}`)
+      }),
+      key('t', `group: ${groupBy}`, () =>
+        update($, groupByA, g => GROUP_BYS[(GROUP_BYS.indexOf(g) + 1) % GROUP_BYS.length]!),
+      ),
+    ]
+    if (cursorPr) {
+      const p = cursorPr
+      listKeys.push(key('o', 'browser', () => openInBrowser($, p.url)))
+      if (p.isMine && p.state === 'OPEN' && p.review === 'APPROVED') {
+        listKeys.push(
+          key('m', isAsking('merge') ? 'm again to merge' : 'merge', () =>
+            confirmOr($, 'merge', p.url, () => gh($, 'Merge', ['pr', 'merge', p.url, '--squash', '--delete-branch'])),
+            isAsking('merge') ? 'warning' : undefined,
+          ),
+        )
+      }
+      if (p.isReviewRequested && p.state === 'OPEN') {
+        listKeys.push(
+          key('a', isAsking('approve') ? 'a again to approve' : 'approve', () =>
+            confirmOr($, 'approve', p.url, () => gh($, 'Approve', ['pr', 'review', p.url, '--approve'])),
+            isAsking('approve') ? 'warning' : undefined,
+          ),
+        )
+      }
+      listKeys.push(key('i', 'ask Claude', () => askClaude($, p)))
+    }
+    listKeys.push(
+      key('c', 'Claude: group', () =>
+        $.prompt.submit({
+          text: `Group my pull requests by related work. Use ${MODEL_TOOLS}: list them, work out which ones belong to the same piece of work (shared ticket keys, branch names, titles, repos that change together), and put each cluster in a short descriptive group. Leave PRs that already sit in a sensible ticket group alone. Tell me the groups you made.`,
+        }),
+      ),
+      key('r', 'refresh', () => refresh($)),
+      key('q', 'quit', () => $.ui.close({ id: PANE })),
+    )
+
     return (
       <Box flexDirection="column">
-        {header}
-        <Text> </Text>
-        {list}
-        {detail && <Text> </Text>}
-        {detail}
+        <Box flexDirection="row" flexWrap="wrap">
+          {tabs}
+        </Box>
+        {statusLine}
+        {prs.length === 0 && !isLoading && <Text dimColor>No PRs loaded yet. Press r.</Text>}
+        {prs.length > 0 && rows.length === 0 && <Text dimColor>Nothing in {current.label}.</Text>}
+        {start > 0 && <Text dimColor>↑ {start} more</Text>}
+        {windowed.map(row => {
+          const id = rowId(row)
+          const isCursor = id === rowId(cursorRow ?? row) && cursorRow !== undefined
+          if (row.kind === 'group') {
+            const isFolded = collapsed.includes(row.name)
+            return (
+              <Button key={id} plain onPress={() => void (async () => {
+                await update($, selectedA, () => id)
+                await toggleFold($, row.name)
+              })()}>
+                <Text inverse={isCursor}>{isFolded ? '▸ ' : '▾ '}</Text>
+                <Text bold color="claude">{row.name}</Text>
+                <Text dimColor> ({row.count})</Text>
+              </Button>
+            )
+          }
+          const p = row.pr
+          const b = badge(p)
+          const ci = ciMark(p)
+          const ref = shortRef(p)
+          const titleRoom = Math.max(10, width - ref.length - b.text.length - 10)
+          return (
+            <Button key={id} plain onPress={() => void (async () => {
+              if (selected === id) await openPr($, id)
+              else await update($, selectedA, () => id)
+            })()}>
+              {isCursor ? '› ' : '  '}
+              <Text color={ci.color}>{ci.text}</Text>{' '}
+              <Text color={b.color}>{b.text}</Text>{' '}
+              <Text dimColor>{ref}</Text>{' '}
+              <Text inverse={isCursor}>{clip(p.title, titleRoom)}</Text>
+            </Button>
+          )
+        })}
+        {start + listRoom < rows.length && <Text dimColor>↓ {rows.length - start - listRoom} more</Text>}
+        {cursorPr && (
+          <Text dimColor>
+            {clip(`${cursorPr.headRef} → ${cursorPr.baseRef} · ${cursorPr.author} · ${ago(cursorPr.updatedAt, now)} ago${cursorPr.reviewers.length ? ` · waiting on ${cursorPr.reviewers.join(', ')}` : ''}`, width)}
+          </Text>
+        )}
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+          {listKeys}
+        </Box>
       </Box>
     )
   })
