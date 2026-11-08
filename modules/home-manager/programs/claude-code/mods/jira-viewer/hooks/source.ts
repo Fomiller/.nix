@@ -96,12 +96,26 @@ async function mcp<T>($: EngineInterface, suffix: string, args: Record<string, u
   }
   const out = (await $.tool.call({ tool, ...args } as never)) as { deny?: string; text?: string; isError?: boolean }
   if (out.deny) throw new Error(out.deny)
-  if (out.isError) throw new Error(firstLineOf(out.text ?? `${suffix} failed`))
+  const text = await savedOutput($, out.text ?? '')
+  if (out.isError && text === out.text) throw new Error(firstLineOf(out.text ?? `${suffix} failed`))
   try {
-    return JSON.parse(out.text ?? 'null') as T
+    return JSON.parse(text || 'null') as T
   } catch {
-    throw new Error(`${suffix} returned something other than JSON: ${firstLineOf(out.text ?? '')}`)
+    throw new Error(`${suffix} returned something other than JSON: ${firstLineOf(text)}`)
   }
+}
+
+export async function savedOutput($: EngineInterface, text: string): Promise<string> {
+  const path = /saved to (\/[^\s"'`]+?)[.,;:]?(?:\s|$)/.exec(text)?.[1]
+  if (!path) return text
+  const saved = String(await $.fs.read(path))
+  try {
+    const blocks = JSON.parse(saved) as unknown
+    if (Array.isArray(blocks) && blocks.every(b => typeof b === 'object' && b && 'text' in b)) {
+      return blocks.map(b => String((b as { text: unknown }).text)).join('')
+    }
+  } catch {}
+  return saved
 }
 
 export async function backend($: EngineInterface): Promise<'connector' | 'api key' | null> {
@@ -145,7 +159,7 @@ function issuesOf(raw: unknown): Issue[] {
 async function mcpSearch($: EngineInterface, jql: string, max: number): Promise<Ticket[]> {
   const { cloudId, base } = await site($)
   const me = await mcpMyself($)
-  const raw = await mcp<unknown>($, 'searchJiraIssuesUsingJql', { cloudId, jql, fields: FIELDS, maxResults: max })
+  const raw = await mcp<unknown>($, 'searchJiraIssuesUsingJql', { cloudId, jql, fields: FIELDS.filter(f => f !== 'comment'), maxResults: Math.min(max, 50) })
   return issuesOf(raw).filter(i => i?.key && i.fields).map(i => toTicket(i, base, me.accountId))
 }
 

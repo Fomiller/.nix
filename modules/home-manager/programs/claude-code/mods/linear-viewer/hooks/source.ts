@@ -103,12 +103,26 @@ async function mcp<T>($: EngineInterface, suffix: string, args: Record<string, u
   }
   const out = (await $.tool.call({ tool, ...args } as never)) as { deny?: string; text?: string; isError?: boolean }
   if (out.deny) throw new Error(out.deny)
-  if (out.isError) throw new Error(firstLineOf(out.text ?? `${suffix} failed`))
+  const text = await savedOutput($, out.text ?? '')
+  if (out.isError && text === out.text) throw new Error(firstLineOf(out.text ?? `${suffix} failed`))
   try {
-    return JSON.parse(out.text ?? 'null') as T
+    return JSON.parse(text || 'null') as T
   } catch {
-    throw new Error(`${suffix} returned something other than JSON: ${firstLineOf(out.text ?? '')}`)
+    throw new Error(`${suffix} returned something other than JSON: ${firstLineOf(text)}`)
   }
+}
+
+export async function savedOutput($: EngineInterface, text: string): Promise<string> {
+  const path = /saved to (\/[^\s"'`]+?)[.,;:]?(?:\s|$)/.exec(text)?.[1]
+  if (!path) return text
+  const saved = String(await $.fs.read(path))
+  try {
+    const blocks = JSON.parse(saved) as unknown
+    if (Array.isArray(blocks) && blocks.every(b => typeof b === 'object' && b && 'text' in b)) {
+      return blocks.map(b => String((b as { text: unknown }).text)).join('')
+    }
+  } catch {}
+  return saved
 }
 
 function firstLineOf(text: string): string {
@@ -363,11 +377,26 @@ function fromMcp(i: McpIssue, me: string): Ticket {
   }
 }
 
-async function mcpIssues($: EngineInterface, args: Record<string, unknown>): Promise<Ticket[]> {
+async function mcpIssues($: EngineInterface, args: Record<string, unknown>, pages = 1): Promise<Ticket[]> {
   const me = await mcpViewer($)
-  const d = await mcp<{ issues: McpIssue[] }>($, 'list_issues', { fields: MCP_FIELDS, orderBy: 'updatedAt', ...args })
-  return (d.issues ?? []).map(i => fromMcp(i, me.id))
+  const out: Ticket[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < pages; page++) {
+    const d = await mcp<{ issues: McpIssue[]; hasNextPage?: boolean; cursor?: string }>($, 'list_issues', {
+      fields: MCP_FIELDS,
+      orderBy: 'updatedAt',
+      limit: 50,
+      ...args,
+      ...(cursor ? { cursor } : {}),
+    })
+    out.push(...(d.issues ?? []).map(i => fromMcp(i, me.id)))
+    if (!d.hasNextPage || !d.cursor) break
+    cursor = d.cursor
+  }
+  return out
 }
+
+const OPEN_TYPES = ['triage', 'backlog', 'unstarted', 'started']
 
 export function mcpArgsOf(text: string): Record<string, unknown> {
   const args: Record<string, unknown> = {}
@@ -401,22 +430,19 @@ export async function me($: EngineInterface): Promise<string> {
 
 export async function list($: EngineInterface): Promise<Ticket[]> {
   if (!(await useMcp($))) return keyList($)
-  const since = Date.now() - 14 * 86_400_000
-  const [mine, created] = await Promise.all([
-    mcpIssues($, { assignee: 'me', limit: 150 }),
-    mcpIssues($, { creator: 'me', limit: 50 }),
+  const batches = await Promise.all([
+    ...OPEN_TYPES.map(state => mcpIssues($, { assignee: 'me', state }, 4)),
+    mcpIssues($, { assignee: 'me', completedAt: '-P14D' }, 2),
+    ...OPEN_TYPES.map(state => mcpIssues($, { creator: 'me', state }, 1)),
   ])
   const byKey = new Map<string, Ticket>()
-  for (const t of [...mine, ...created]) {
-    const isOpen = t.statusType !== 'done' && t.statusType !== 'canceled'
-    if (isOpen || (t.isAssignedToMe && Date.parse(t.updatedAt) > since)) byKey.set(t.key, t)
-  }
+  for (const t of batches.flat()) byKey.set(t.key, t)
   return [...byKey.values()]
 }
 
 export async function search($: EngineInterface, query: string): Promise<Ticket[]> {
   if (!(await useMcp($))) return keySearch($, query)
-  const found = await mcpIssues($, { limit: 50, ...mcpArgsOf(query) })
+  const found = await mcpIssues($, mcpArgsOf(query))
   return /(^|\s)is:open\b/.test(query) ? found.filter(t => t.statusType !== 'done' && t.statusType !== 'canceled') : found
 }
 

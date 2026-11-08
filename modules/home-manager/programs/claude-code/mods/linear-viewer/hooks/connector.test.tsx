@@ -46,9 +46,11 @@ function issue(n: number, title: string, extra: Record<string, unknown> = {}) {
 
 const clockRef: { c: ReturnType<typeof mock.clock> | null } = { c: null }
 
+const saved = { text: '', paths: [] as string[] }
+
 type Call = { tool: string; args: Record<string, unknown> }
 
-function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () => []) {
+function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () => [], oversized = false) {
   const calls: Call[] = []
   const http: string[] = []
   const toasts: string[] = []
@@ -67,6 +69,10 @@ function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () 
     http.push(e.url)
     return { value: { status: 500, ok: false, headers: {}, text: '' } }
   })
+  on('fs.read', (_, e) => {
+    saved.paths.push(e.path)
+    return { value: saved.text }
+  })
   on('tool.list', () => ({
     value: ['list_issues', 'get_issue', 'list_comments', 'list_issue_statuses', 'save_issue', 'save_comment', 'whoami'].map(n => ({ name: `${P}${n}` })) as never,
   }))
@@ -76,7 +82,14 @@ function engine(on: On, issues: () => unknown[], comments: () => unknown[] = () 
     const name = tool.replace(P, '')
     let out: unknown = { ok: true }
     if (name === 'whoami') out = { user: { id: ME, name: 'Forrest Miller', displayName: 'forrestmillerj' } }
-    else if (name === 'list_issues') out = { issues: args.creator === 'me' ? [] : issues(), hasNextPage: false }
+    else if (name === 'list_issues') {
+      out = { issues: args.creator === 'me' ? [] : issues(), hasNextPage: false }
+      if (oversized && args.state === 'started') {
+        saved.text = JSON.stringify([{ type: 'text', text: JSON.stringify(out) }])
+        const text = 'Error: result (100,919 characters across 1 line) exceeds maximum allowed tokens. Output has been saved to /Users/forrest/.claude/projects/x/tool-results/mcp-list_issues-1.txt.'
+        return { result: [{ type: 'text', text }], text } as never
+      }
+    }
     else if (name === 'get_issue') out = { id: args.id, description: 'Built from <issue id="x" label="FOM-269" href="https://linear.app/fomiller/issue/FOM-269" />.' }
     else if (name === 'list_comments') out = { comments: comments(), hasNextPage: false }
     else if (name === 'list_issue_statuses') out = [
@@ -163,4 +176,15 @@ test('a comment found in the background toasts in connector mode', async ($, on)
 test('qualifiers map onto the connector arguments', () => {
   expect(mcpArgsOf('assignee:pat team:FOM label:bug attic')).toEqual({ assignee: 'pat', team: 'FOM', label: 'bug', query: 'attic' })
   expect(mcpArgsOf('status:"In Review" cycle:current')).toEqual({ state: 'In Review', cycle: 'current' })
+})
+
+test('a result too big for one MCP answer is read from the file Claude Code saved', async ($, on) => {
+  const { calls } = engine(on, () => [issue(7, 'Big one', { status: 'In Progress', statusType: 'started' })], () => [], true)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect((await $.command.run(run('refresh'))).text).toBe('Linear viewer opened.')
+  expect(saved.paths).toContain('/Users/forrest/.claude/projects/x/tool-results/mcp-list_issues-1.txt')
+  expect(calls.filter(c => c.tool.endsWith('list_issues')).every(c => c.args.limit === 50)).toBe(true)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button', key: 'FOM-7' })).toBeTruthy()
+  await ui.unmount()
 })
