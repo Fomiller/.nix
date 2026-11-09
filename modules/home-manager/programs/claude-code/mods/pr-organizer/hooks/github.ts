@@ -14,11 +14,9 @@ const PR_FIELDS = `
     reviews(last: 1) { totalCount nodes { author { login } submittedAt } }
   } }`
 
-export const LIST_QUERY = `query($mine: String!, $merged: String!, $review: String!) {
+export const LIST_QUERY = `query($q: String!, $n: Int!) {
   viewer { login }
-  mine: search(query: $mine, type: ISSUE, first: 40) { ${PR_FIELDS} }
-  merged: search(query: $merged, type: ISSUE, first: 15) { ${PR_FIELDS} }
-  review: search(query: $review, type: ISSUE, first: 30) { ${PR_FIELDS} }
+  results: search(query: $q, type: ISSUE, first: $n) { ${PR_FIELDS} }
 }`
 
 export const SEARCH_QUERY = `query($q: String!) {

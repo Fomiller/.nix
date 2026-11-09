@@ -124,8 +124,14 @@ function engine(on: On, list: () => string, store: Record<string, unknown> = {})
   on('process.run', (_, e) => {
     ran.push([...e.argv])
     const query = e.argv[4] ?? ''
+    const q = e.argv[6] ?? ''
+    const part = q.includes('is:merged') ? 'merged' : q.includes('review-requested') ? 'review' : 'mine'
     const stdout = query.includes('$url')
       ? DETAIL
+      : query.includes('$n:')
+        ? JSON.stringify({
+            data: { viewer: { login: 'me' }, results: JSON.parse(list()).data[part] },
+          })
       : query.includes('$q:')
         ? SEARCH
         : e.argv[1] === 'api'

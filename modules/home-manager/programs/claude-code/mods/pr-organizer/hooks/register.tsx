@@ -12,7 +12,7 @@ import {
   searchResultsOf,
   toTimeline,
 } from './github'
-import type { ListData } from './github'
+import type { ListData, Node } from './github'
 import {
   ago,
   changesOf,
@@ -98,22 +98,30 @@ async function refresh($: Dollar, opts: { quiet?: boolean } = {}): Promise<strin
   try {
     const scope = (await read($, scopeA)).trim()
     const q = (s: string) => (scope ? `${s} ${scope}` : s)
-    const ran = await $.process.run(
-      [
-        'gh', 'api', 'graphql',
-        '-f', `query=${LIST_QUERY}`,
-        '-f', `mine=${q('is:pr is:open author:@me archived:false sort:updated-desc')}`,
-        '-f', `merged=${q('is:pr is:merged author:@me sort:updated-desc')}`,
-        '-f', `review=${q('is:pr is:open review-requested:@me archived:false sort:updated-desc')}`,
-      ],
-      { timeoutMs: 60_000 },
-    )
-    if (ran.exitCode !== 0) {
-      const err = `gh failed: ${firstLine(ran.stderr || ran.stdout)}`
+    const run = (query: string, n: number) =>
+      $.process.run(
+        ['gh', 'api', 'graphql', '-f', `query=${LIST_QUERY}`, '-f', `q=${q(query)}`, '-F', `n=${n}`],
+        { timeoutMs: 60_000 },
+      )
+    const [mine, merged, review] = await Promise.all([
+      run('is:pr is:open author:@me archived:false sort:updated-desc', 40),
+      run('is:pr is:merged author:@me sort:updated-desc', 15),
+      run('is:pr is:open review-requested:@me archived:false sort:updated-desc', 30),
+    ])
+    const failed = [mine, merged, review].find(r => r.exitCode !== 0)
+    if (failed) {
+      const err = `gh failed: ${firstLine(failed.stderr || failed.stdout)}`
       await setStatus($, { text: err, isError: true })
       return err
     }
-    const data = JSON.parse(ran.stdout).data as ListData
+    const parse = (r: typeof mine) => JSON.parse(r.stdout).data as { viewer: { login: string }; results: { nodes: Node[] } }
+    const [m, g, v] = [mine, merged, review].map(parse)
+    const data: ListData = {
+      viewer: m!.viewer,
+      mine: m!.results,
+      merged: g!.results,
+      review: v!.results,
+    }
     const list = mergeLists(data)
     const before = (await $.store.get('snapshot')) as Snapshot | undefined
     if (before) await pushEvents($, changesOf(before, list, data.viewer.login))
