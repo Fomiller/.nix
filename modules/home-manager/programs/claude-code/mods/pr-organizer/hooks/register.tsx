@@ -559,6 +559,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || !top) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
+    const below = await next(e)
     const pr = (await read($, prsA)).find(p => p.url === top.url)
     const confirm = await read($, confirmA)
     const canMerge =
@@ -567,6 +568,7 @@ export const register: Register = on => {
     const width = Math.max(20, e.props.bodyColumns - 40)
 
     return (
+      <Box flexDirection="column">
       <Box flexDirection="row" columnGap={1} flexWrap="wrap">
         <Text color={top.kind === 'ci-failed' || top.kind === 'changes' ? 'error' : 'success'}>
           PR
@@ -604,6 +606,8 @@ export const register: Register = on => {
         {events.length > 1 && (
           <Button key="band-clear" hotkey="x" label="clear all" onPress={() => void update($, eventsA, () => [])} />
         )}
+      </Box>
+      {below}
       </Box>
     )
   })

@@ -2,7 +2,7 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-5-5",
-    "CLAUDE_CODE_PLUGIN_DIRS": "~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/pr-organizer"
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/pr-organizer:~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/linear-viewer:~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/jira-viewer"
   },
   "permissions": {
     "allow": [

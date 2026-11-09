@@ -27,6 +27,14 @@ some generic wording in README.md — both configured hosts are Macs.
   pinned `nixpkgs-stable` input, for when unstable is broken for a specific
   package) and `custom-packages` (exposes `pkgs.rtk`, etc. from `packages/`).
 - `packages/*.nix` — custom package derivations (`rtk`, `chart-releaser`).
+- `modules/home-manager/programs/claude-code/mods/` — Claude Code mods
+  (`pr-organizer`, `linear-viewer`, `jira-viewer`), loaded from the live
+  checkout through `CLAUDE_CODE_PLUGIN_DIRS` in that module's
+  `settings.json`, so no `switch` is needed. The two tracker mods share
+  `_tracker-core/core.tsx`. A mod can only import files inside its own
+  folder, and symlinks are refused, so edit the `_tracker-core` copy and
+  run `just sync-mods`. Check a mod with `claude plugin validate <dir>` and
+  `claude plugin test <dir>`.
 - `justfile` — the interface for humans; see below.
 
 ## Commands

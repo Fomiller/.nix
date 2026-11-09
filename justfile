@@ -64,3 +64,13 @@ attic-login:
     printf '%s' "$token" > "$tmp"
     sudo install -m 600 -o root -g wheel "$tmp" /etc/nix/attic-token
     echo "attic ok. run 'just rebuild <host>' to write the netrc entry."
+
+# Mods can only import files inside their own folder, so each tracker mod
+# carries a copy of the shared core.
+sync-mods:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mods=modules/home-manager/programs/claude-code/mods
+    for m in linear-viewer jira-viewer; do
+      cp "$mods/_tracker-core/core.tsx" "$mods/$m/hooks/core.tsx"
+    done
