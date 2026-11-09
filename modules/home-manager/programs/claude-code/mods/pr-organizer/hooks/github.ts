@@ -6,8 +6,8 @@ const PR_FIELDS = `
     reviewDecision mergeable
     author { login }
     repository { nameWithOwner }
-    labels(first: 10) { nodes { name } }
-    reviewRequests(first: 10) { nodes { requestedReviewer {
+    labels(first: 5) { nodes { name } }
+    reviewRequests(first: 5) { nodes { requestedReviewer {
       ... on User { login } ... on Team { name } ... on Bot { login } } } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     comments(last: 1) { totalCount nodes { author { login } createdAt } }
@@ -16,9 +16,9 @@ const PR_FIELDS = `
 
 export const LIST_QUERY = `query($mine: String!, $merged: String!, $review: String!) {
   viewer { login }
-  mine: search(query: $mine, type: ISSUE, first: 60) { ${PR_FIELDS} }
-  merged: search(query: $merged, type: ISSUE, first: 25) { ${PR_FIELDS} }
-  review: search(query: $review, type: ISSUE, first: 40) { ${PR_FIELDS} }
+  mine: search(query: $mine, type: ISSUE, first: 40) { ${PR_FIELDS} }
+  merged: search(query: $merged, type: ISSUE, first: 15) { ${PR_FIELDS} }
+  review: search(query: $review, type: ISSUE, first: 30) { ${PR_FIELDS} }
 }`
 
 export const SEARCH_QUERY = `query($q: String!) {
