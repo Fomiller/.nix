@@ -41,7 +41,8 @@
     "superpowers@claude-plugins-official": true,
     "terraform@claude-plugins-official": true,
     "worktrunk@worktrunk": true,
-    "incident-io@claude-plugins-official": true
+    "incident-io@claude-plugins-official": true,
+    "skins@hellosverre-mods": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
@@ -72,6 +73,12 @@
       "source": {
         "source": "github",
         "repo": "max-sixty/worktrunk"
+      }
+    },
+    "hellosverre-mods": {
+      "source": {
+        "source": "github",
+        "repo": "hellosverre/claude-skins"
       }
     }
   },
