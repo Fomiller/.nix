@@ -1,4 +1,4 @@
-switch flake: flake-update
+switch flake: flake-update _attic-check
     home-manager switch --flake ".#{{flake}}"
 
 # --extra-experimental-features is a backstop: nix-command/flakes are enabled
@@ -33,6 +33,7 @@ rebuild flake: flake-update
       sudo mv /etc/nix/nix.custom.conf /etc/nix/nix.custom.conf.before-nix-darwin
     fi
     sudo darwin-rebuild --flake .#{{flake}} switch
+    just _attic-check
 
 # One-time per machine. Writes the token to two places, same value, different
 # consumers: ~/.config/attic/config.toml for the attic CLI and the watch-store
@@ -64,6 +65,20 @@ attic-login:
     printf '%s' "$token" > "$tmp"
     sudo install -m 600 -o root -g wheel "$tmp" /etc/nix/attic-token
     echo "attic ok. run 'just rebuild <host>' to write the netrc entry."
+
+# Warns, never fails: a 401 from attic only costs cache hits, and the build
+# still falls back to cache.nixos.org or a local build.
+_attic-check:
+    #!/usr/bin/env bash
+    host="attic.fomiller.com"
+    netrc="/nix/var/determinate/netrc"
+    code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' --netrc-file "$netrc" "https://$host/main/nix-cache-info" 2>/dev/null)
+    [ "$code" = 200 ] && exit 0
+    if [ ! -e /etc/nix/attic-token ]; then
+      echo "attic: HTTP $code and no /etc/nix/attic-token. run 'just attic-login', then 'just rebuild <host>'." >&2
+    else
+      echo "attic: HTTP $code. netrc lost its attic line (reboot or 'determinate-nixd login'). run 'just rebuild <host>'." >&2
+    fi
 
 # Mods can only import files inside their own folder, so each tracker mod
 # carries a copy of the shared core.

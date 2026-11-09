@@ -163,11 +163,14 @@ password in.
 - **`HTTP error 401` on `https://attic.fomiller.com/main/nix-cache-info`**
   during `just switch`/`just rebuild`: `/nix/var/determinate/netrc` has no (or
   a stale) entry for `attic.fomiller.com`. That file lives outside the flake
-  in `/nix/var`, so a machine OS reset/reinstall can wipe it even though the
-  attic token itself (in Doppler, project `attic` config `dev`, secret
-  `ATTIC_TOKEN_MACS`) is still valid. Fix is `just attic-login` — it pulls the
-  token from Doppler, verifies it against the cache, and writes the netrc
-  entry. Don't hand-edit `/nix/var/determinate/netrc` or reuse the token from
+  in `/nix/var`, and `determinate-nixd` rewrites it on restart (macOS update
+  reboots) or on `determinate-nixd login`, dropping the attic line. Usual fix
+  is `just rebuild <host>`: the `modules/darwin/attic-netrc` activation script
+  rewrites the line from `/etc/nix/attic-token`. Only if that token file is
+  missing (fresh machine) or the token rotated, run `just attic-login` first;
+  it writes `/etc/nix/attic-token`, not the netrc. `just switch` warns before
+  it runs, and `just rebuild` checks after, via the `_attic-check` recipe.
+  Don't hand-edit `/nix/var/determinate/netrc` or reuse the token from
   `~/.config/attic/config.toml` — that config is for the `attic` CLI (push), a
   separate auth path from what the Nix daemon reads via `netrc-file` in
   `/etc/nix/nix.conf`.
