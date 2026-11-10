@@ -83,7 +83,10 @@ in
   ) (builtins.readDir ./skills)
   // {
     ".claude/CLAUDE.md".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/CLAUDE.md";
-    ".claude/settings.json".source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";
+    ".claude/settings.json" = {
+      source = config.lib.file.mkOutOfStoreSymlink "${claudeDir}/settings.json";
+      force = true;
+    };
     ".claude/keybindings.json".source =
       config.lib.file.mkOutOfStoreSymlink "${claudeDir}/keybindings.json";
     # Whole-directory symlink here, unlike ./skills above which needs one

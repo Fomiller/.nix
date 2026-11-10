@@ -533,11 +533,11 @@
         "nixpkgs": "nixpkgs_5"
       },
       "locked": {
-        "lastModified": 1794326919,
-        "narHash": "sha256-n3vJS0ux66bvzKcOQ9EQjKt2UrlppA0n73G3UDyzMQo=",
+        "lastModified": 1794328285,
+        "narHash": "sha256-5nIrsBqcchCAICjVthupmgMQ7h5dwR+aYSTpCOzzX3M=",
         "owner": "nklmilojevic",
         "repo": "sofka",
-        "rev": "b65e106acf48c5cfbde0300c5cebabd105613955",
+        "rev": "914054cf2c9d1e5e385d2ff14cc471c338988597",
         "type": "github"
       },
       "original": {

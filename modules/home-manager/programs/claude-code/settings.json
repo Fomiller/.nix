@@ -4,6 +4,18 @@
     "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-5-5",
     "CLAUDE_CODE_PLUGIN_DIRS": "~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/pr-organizer:~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/linear-viewer:~/dev/personal/.nix/modules/home-manager/programs/claude-code/mods/jira-viewer"
   },
+  "pluginConfigs": {
+    "pr-organizer": {
+      "options": {
+        "alerts": "band"
+      }
+    }
+  },
+  "deniedMcpServers": [
+    {
+      "serverUrl": "https://mcp.incident.io/*"
+    }
+  ],
   "permissions": {
     "allow": [
       "mcp__incident_io__*",
