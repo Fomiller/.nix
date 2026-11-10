@@ -1,7 +1,13 @@
-{ ... }:
+{ pkgs, ... }:
 {
   programs.tmux = {
     enable = true;
+    plugins = [
+      {
+        plugin = pkgs.tmuxPlugins.resurrect;
+        extraConfig = "set -g @resurrect-capture-pane-contents 'on'";
+      }
+    ];
     keyMode = "vi";
     mouse = true;
     baseIndex = 1;
