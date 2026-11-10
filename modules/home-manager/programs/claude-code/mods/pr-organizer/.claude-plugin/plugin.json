@@ -1,10 +1,22 @@
 {
   "name": "pr-organizer",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A /prs pane to view your GitHub PRs by state, group them by ticket or custom group, and act on them (merge, close, ready, review, comment).",
   "types": "./types/index.d.ts",
   "license": "MIT",
   "author": {
     "name": "Forrest Miller"
+  },
+  "userConfig": {
+    "alerts": {
+      "type": "string",
+      "title": "Alert style",
+      "description": "How PR updates show: toast (top right) or band (bordered bar above the prompt with buttons).",
+      "default": "toast",
+      "options": [
+        "toast",
+        "band"
+      ]
+    }
   }
 }

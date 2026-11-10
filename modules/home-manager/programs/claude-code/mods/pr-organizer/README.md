@@ -73,13 +73,13 @@ Rows for PRs you did not open show `@author`. Claude can search too, through the
 
 ## Background updates
 
-The mod checks your PRs every few minutes, even with the pane closed. When something changes it shows a toast and keeps a band above the prompt. Changes it reports:
+The mod checks your PRs every few minutes, even with the pane closed. When something changes it shows a toast in the top right. Set `alerts` to `band` in the plugin config for a bordered band above the prompt with buttons instead. Changes it reports:
 
 - one of your PRs is approved, gets changes requested, fails CI, passes CI, or merges
 - someone else comments on a PR
 - someone requests your review
 
-Press ctrl+x tab to reach the band. Then `o` opens the PR, `m` merges an approved PR (press twice), `d` dismisses the update, and `x` clears all updates.
+In band mode, press ctrl+x tab to reach the band. Then `o` opens the PR, `m` merges an approved PR (press twice), `d` dismisses the update, and `x` clears all updates.
 
 ## Grouping
 

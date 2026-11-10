@@ -76,6 +76,8 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+let alertStyle: 'toast' | 'band' = 'toast'
+
 async function pushEvents($: Dollar, found: { url: string; kind: PrEvent['kind']; text: string }[]) {
   if (found.length === 0) return
   const now = await $.clock.now()
@@ -84,6 +86,7 @@ async function pushEvents($: Dollar, found: { url: string; kind: PrEvent['kind']
     const replaced = list.filter(e => !fresh.some(f => f.url === e.url && f.kind === e.kind))
     return [...fresh, ...replaced].slice(0, 30)
   })
+  if (alertStyle !== 'toast') return
   if (fresh.length > 3) {
     $.ui.toast(`${fresh.length} PR updates. Press ctrl+x tab, then o to open the newest.`, {
       timeoutMs: 8000,
@@ -395,7 +398,8 @@ async function openPane($: Dollar) {
   await $.ui.open({ id: PANE, title: 'PRs', focus: true })
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  alertStyle = options.alerts === 'band' ? 'band' : 'toast'
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'prs',
@@ -564,7 +568,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const events = await read($, eventsA)
     const top = events[0]
-    if (e.props.hasSurvey || !top) return next(e)
+    if (alertStyle !== 'band' || e.props.hasSurvey || !top) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const below = await next(e)
@@ -575,47 +579,55 @@ export const register: Register = on => {
     const isConfirming = confirm === `band-merge:${top.url}`
     const width = Math.max(20, e.props.bodyColumns - 40)
 
+    const bad = top.kind === 'ci-failed' || top.kind === 'changes'
     return (
       <Box flexDirection="column">
-      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-        <Text color={top.kind === 'ci-failed' || top.kind === 'changes' ? 'error' : 'success'}>
-          PR
-        </Text>
-        <Text>{clip(top.text, width)}</Text>
-        {events.length > 1 && <Text dimColor>+{events.length - 1}</Text>}
-        <Button
-          key="band-open"
-          hotkey="o"
-          label="open"
-          onPress={() =>
-            void (async () => {
-              await openPane($)
-              await openPr($, top.url)
-            })()
-          }
-        />
-        {canMerge && (
+        <Box
+          flexDirection="row"
+          columnGap={1}
+          flexWrap="wrap"
+          borderStyle="round"
+          borderColor={bad ? 'error' : 'claude'}
+          paddingX={1}
+        >
+          <Text bold color={bad ? 'error' : 'success'}>
+            PR
+          </Text>
+          <Text bold>{clip(top.text, width)}</Text>
+          {events.length > 1 && <Text dimColor>+{events.length - 1} more</Text>}
           <Button
-            key="band-merge"
-            hotkey="m"
-            variant={isConfirming ? 'primary' : undefined}
-            label={isConfirming ? 'confirm merge' : 'merge'}
+            key="band-open"
+            hotkey="o"
+            label="open"
             onPress={() =>
-              void confirmOr($, 'band-merge', top.url, async () => {
-                await gh($, `Merge ${shortRef(pr)}`, ['pr', 'merge', top.url, '--squash', '--delete-branch'])
-                await dismissEventsFor($, top.url)
-                const status = await read($, statusA)
-                if (status) $.ui.toast(status.text)
-              })
+              void (async () => {
+                await openPane($)
+                await openPr($, top.url)
+              })()
             }
           />
-        )}
-        <Button key="band-dismiss" hotkey="d" label="dismiss" onPress={() => void update($, eventsA, l => l.slice(1))} />
-        {events.length > 1 && (
-          <Button key="band-clear" hotkey="x" label="clear all" onPress={() => void update($, eventsA, () => [])} />
-        )}
-      </Box>
-      {below}
+          {canMerge && (
+            <Button
+              key="band-merge"
+              hotkey="m"
+              variant={isConfirming ? 'primary' : undefined}
+              label={isConfirming ? 'confirm merge' : 'merge'}
+              onPress={() =>
+                void confirmOr($, 'band-merge', top.url, async () => {
+                  await gh($, `Merge ${shortRef(pr)}`, ['pr', 'merge', top.url, '--squash', '--delete-branch'])
+                  await dismissEventsFor($, top.url)
+                  const status = await read($, statusA)
+                  if (status) $.ui.toast(status.text)
+                })
+              }
+            />
+          )}
+          <Button key="band-dismiss" hotkey="d" label="dismiss" onPress={() => void update($, eventsA, l => l.slice(1))} />
+          {events.length > 1 && (
+            <Button key="band-clear" hotkey="x" label="clear all" onPress={() => void update($, eventsA, () => [])} />
+          )}
+        </Box>
+        {below}
       </Box>
     )
   })

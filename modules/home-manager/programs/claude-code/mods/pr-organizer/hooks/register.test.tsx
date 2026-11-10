@@ -184,7 +184,24 @@ test('vim keys move the cursor, open the conversation and merge after a confirm'
   }
 })
 
-test('an approval found in the background toasts and offers merge above the prompt', async ($, on) => {
+test('toast style toasts and draws no band', async ($, on) => {
+  let review = 'REVIEW_REQUIRED'
+  const { toasts } = engine(on, () => listJson({ reviewDecision: review }))
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>bottom</Text>
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run(refreshArgs)
+  review = 'APPROVED'
+  await $.command.run(refreshArgs)
+  expect(toasts[0]).toContain('Approved, ready to merge: api#1')
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band.find({ type: 'Text', text: /Approved/ })).toBeUndefined()
+  await band.unmount()
+})
+
+test('an approval found in the background offers merge above the prompt in band style', { options: { alerts: 'band' } }, async ($, on) => {
   let review = 'REVIEW_REQUIRED'
   const { ran, toasts } = engine(on, () => listJson({ reviewDecision: review }))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
@@ -193,11 +210,10 @@ test('an approval found in the background toasts and offers merge above the prom
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.command.run(refreshArgs)
-  expect(toasts.length).toBe(0)
 
   review = 'APPROVED'
   await $.command.run(refreshArgs)
-  expect(toasts[0]).toContain('Approved, ready to merge: api#1')
+  expect(toasts.length).toBe(0)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await band.find({ type: 'Text', text: /Approved/ })).toBeTruthy()
