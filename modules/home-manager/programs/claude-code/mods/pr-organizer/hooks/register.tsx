@@ -51,6 +51,7 @@ const detailOffsetA = atom({ plugin: 'pr-organizer', key: 'detailOffset' } as co
 const eventsA = atom({ plugin: 'pr-organizer', key: 'events' } as const, [], {
   shape: 'events-1',
 })
+const alertStyleA = atom({ plugin: 'pr-organizer', key: 'alertStyle' } as const, 'toast')
 const pollMinutesA = atom({ plugin: 'pr-organizer', key: 'pollMinutes' } as const, 3)
 const filterA = atom({ plugin: 'pr-organizer', key: 'filter' } as const, '')
 const searchQueryA = atom({ plugin: 'pr-organizer', key: 'searchQuery' } as const, '')
@@ -76,7 +77,6 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-let alertStyle: 'toast' | 'band' = 'toast'
 
 async function pushEvents($: Dollar, found: { url: string; kind: PrEvent['kind']; text: string }[]) {
   if (found.length === 0) return
@@ -86,7 +86,7 @@ async function pushEvents($: Dollar, found: { url: string; kind: PrEvent['kind']
     const replaced = list.filter(e => !fresh.some(f => f.url === e.url && f.kind === e.kind))
     return [...fresh, ...replaced].slice(0, 30)
   })
-  if (alertStyle !== 'toast') return
+  if ((await read($, alertStyleA)) !== 'toast') return
   if (fresh.length > 3) {
     $.ui.toast(`${fresh.length} PR updates. Press ctrl+x tab, then o to open the newest.`, {
       timeoutMs: 8000,
@@ -399,13 +399,12 @@ async function openPane($: Dollar) {
 }
 
 export const register: Register = (on, options) => {
-  alertStyle = options.alerts === 'band' ? 'band' : 'toast'
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'prs',
       description:
-        'Open the PR organizer (args: refresh | search <query> | author <login> | scope <qualifiers> | poll <minutes|off>)',
-      argumentHint: '[refresh | search <query> | author <login> | scope org:acme | poll 5]',
+        'Open the PR organizer (args: refresh | search <query> | author <login> | scope <qualifiers> | poll <minutes|off> | band-on | band-off)',
+      argumentHint: '[refresh | search <query> | author <login> | scope org:acme | poll 5 | band-off]',
     })
     await $.tool.register({
       name: 'list_prs',
@@ -446,6 +445,15 @@ export const register: Register = (on, options) => {
     const storedPoll = await $.store.get('pollMinutes')
     if (typeof storedPoll === 'number') await update($, pollMinutesA, () => storedPoll)
 
+    const storedStyle = await $.store.get('alertStyle')
+    const style =
+      storedStyle === 'band' || storedStyle === 'toast'
+        ? storedStyle
+        : options.alerts === 'band'
+          ? 'band'
+          : 'toast'
+    await update($, alertStyleA, () => style)
+
     const minutes = await read($, pollMinutesA)
     startPolling($, minutes)
     if (minutes > 0) $.clock.after(5_000, () => void refresh($, { quiet: true }))
@@ -473,6 +481,14 @@ export const register: Register = (on, options) => {
       startPolling($, minutes)
       return {
         text: minutes > 0 ? `Checking PRs every ${minutes} min.` : 'Background PR checks are off.',
+      }
+    }
+    if (sub === 'band-on' || sub === 'band-off') {
+      const style = sub === 'band-on' ? 'band' : 'toast'
+      await update($, alertStyleA, () => style)
+      await $.store.set('alertStyle', style)
+      return {
+        text: style === 'band' ? 'PR updates show in the band.' : 'PR updates show as toasts.',
       }
     }
     if (sub === 'search' || sub === 'author') {
@@ -568,7 +584,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const events = await read($, eventsA)
     const top = events[0]
-    if (alertStyle !== 'band' || e.props.hasSurvey || !top) return next(e)
+    if ((await read($, alertStyleA)) !== 'band' || e.props.hasSurvey || !top) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const below = await next(e)

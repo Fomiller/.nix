@@ -105,6 +105,7 @@ declare module 'claude-code' {
       detail: Shaped<Detail>
       detailOffset: number
       events: Shaped<PrEvent[]>
+      alertStyle: 'toast' | 'band'
       pollMinutes: number
       filter: string
       searchQuery: string

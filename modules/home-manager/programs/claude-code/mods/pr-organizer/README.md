@@ -13,6 +13,8 @@ A Claude Code mod that adds a `/prs` pane for working through your GitHub pull r
 /prs scope             clear the scope
 /prs poll 5            check for PR changes every 5 minutes (default 3, saved)
 /prs poll off          stop background checks
+/prs band-on           show PR updates in the band (saved)
+/prs band-off          show PR updates as toasts (saved)
 ```
 
 ## Keys
