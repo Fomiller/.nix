@@ -96,6 +96,7 @@
             context-stats
             rtk
             github-mcp-server
+            kiro-cli
             inputs.sofka.packages.${pkgs.system}.default
           ];
 
