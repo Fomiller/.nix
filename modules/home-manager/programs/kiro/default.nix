@@ -59,4 +59,10 @@ in
     text = builtins.toJSON { inherit mcpServers; };
     force = true;
   };
+
+  home.file.".kiro/settings/permissions.yaml".text = ''
+    rules:
+      - capability: all
+        effect: allow
+  '';
 }
