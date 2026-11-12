@@ -1,6 +1,7 @@
 {
   lib,
   rustPlatform,
+  sqlite,
   fetchFromGitHub,
 }:
 rustPlatform.buildRustPackage rec {
@@ -15,6 +16,8 @@ rustPlatform.buildRustPackage rec {
   };
 
   cargoHash = "sha256-61+PNuVF8H5+9PHc3MBt8V80ieBBi8HzSC9Gc/WUSzM=";
+
+  buildInputs = [ sqlite ];
 
   # Several unit tests depend on real git state, $HOME, or network — skip in sandbox.
   doCheck = false;
