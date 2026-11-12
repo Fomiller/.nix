@@ -20,6 +20,7 @@
     ../programs/gh
     ../programs/git
     ../programs/k9s
+    ../programs/kiro
     ../programs/lazygit
     ../programs/rbenv
     ../programs/starship

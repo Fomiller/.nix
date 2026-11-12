@@ -87,14 +87,14 @@
           username = "forrest";
           # ArgoCD MCP server target. baseUrl = null skips registering it on
           # this host. insecure sets NODE_TLS_REJECT_UNAUTHORIZED=0 for a
-          # self-signed endpoint. TODO: set nimbus's ArgoCD URL.
+          # self-signed endpoint.
           argocd = {
-            baseUrl = null;
+            baseUrl = "https://argocd.fomiller.com";
             insecure = false;
           };
           # Grafana MCP server target. baseUrl = null skips registering it on
-          # this host. TODO: set nimbus's Grafana URL.
-          grafana.baseUrl = null;
+          # this host.
+          grafana.baseUrl = "https://grafana.fomiller.com";
         };
         "forrest.miller" = {
           email = "forrest.millerj@flocksafety.com";
