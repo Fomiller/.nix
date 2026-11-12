@@ -8,6 +8,9 @@
       vi = "nvim";
       # claude code
       cl = "claude";
+      # kiro
+      ko = "kiro-cli";
+      koc = "kirocrew";
       # clc is a function, not an alias — see ./claude-session.zsh.
       # git
       ga = "git add";
